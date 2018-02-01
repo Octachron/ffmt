@@ -1,0 +1,11 @@
+(jbuild_version 1)
+
+(library (
+ (public_name stringi-ppx)
+ (name ppx)
+ (wrapped false)
+ (preprocess (pps (ppx_tools_versioned.metaquot_404)))
+ (kind ppx_rewriter)
+ (ppx_runtime_libraries (stringi))
+ (libraries (ppx_core ppx_driver))
+) )

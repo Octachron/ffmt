@@ -1,0 +1,13 @@
+(jbuild_version 1)
+
+(executable (
+            (name example)
+            (preprocess (pps (ppx)))
+            (libraries (stringi))
+))
+
+(alias
+ ((name    runtest)
+  (deps    (example.exe))
+  (action  (run ${<}))
+))
