@@ -6,21 +6,26 @@ type (_,_) index =
   | Z: ('elt, 'elt -> _ ) index
   | S: ('elt, 'list) index -> ('elt, 'any -> 'list) index
 
+type (_,_) args =
+  | []: ('result,'result) args
+  | (::): 'a * ('list,'result) args -> ('a -> 'list, 'result) args
+
+type ('all,'right,'result) iargs =
+  { all: ('all,'result) args; right: ('right,'result) args }
+
+let make x = { all = x; right = x }
+let current (type all elt right stop) (x: (all,elt -> right,stop) iargs) =
+  match x.right with
+  | a :: q -> a, { x with right = q}
+  | [] -> raise Not_found
+
+
 type (_,_,_,_) token =
   | Literal: string -> ('list, 'close,'pos * 'pos,'fmt) token
-  | Captured: 'fmt captured -> ('list,'close,'pos * 'pos,'fmt) token
-  | Var: { typ:('typ,'fmt) printer;
-           pos: ('typ, 'list) index
-         } -> ('list,'close,'pos * 'pos,'fmt ) token
-  | Implicit_pos: ('typ,'fmt) printer ->
-    ('list,'close, ('typ -> 'more) * 'more,'fmt) token
-  | Ext_var: {
-      data_index: ('typ,'list) index;
-      printer_index:( ('typ,'fmt) printer,'list) index } ->
-    ('list,'close,'pos * 'pos, 'fmt) token
-  | Implicit:
-    ('list,'close, ( ('typ,'fmt) printer -> 'typ -> 'more) * 'more,'fmt) token
-
+  | Captured:
+      ( ('list,'right,'close) iargs ->
+        'fmt captured * ('list,'right2,'close) iargs )
+      -> ('list,'close, 'right * 'right2 ,'fmt) token
 
 
 type (_,_,_,_) format =
@@ -31,12 +36,21 @@ type (_,_,_,_) format =
       ('list,'result,'right,'fmt) format
 
 
-type (_,_) args =
-  | []: ('result,'result) args
-  | (::): 'a * ('list,'result) args -> ('a -> 'list, 'result) args
 
-let rec nth: type elt a r. (elt,a) index -> (a,r) args -> elt = fun n  args ->
+
+let rec nth: type elt a right r. (elt,a) index -> (a,r) args -> elt = fun n  args ->
   match n, args with
   | Z , a :: _ -> a
   | S n, _ :: q -> nth n q
   | _, [] -> raise Not_found
+
+let (.%()) iargs n = nth n iargs.all
+
+(*
+let rec (^^): type r right free fmt.
+  (free,r,right,fmt) format -> (free,r,right,fmt) format ->
+  (free,r,right,fmt) format =
+  fun l r -> match l with
+    | [] -> r
+    | a :: q -> a :: (q ^^ r)
+ *)

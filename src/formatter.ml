@@ -39,28 +39,15 @@ let string s ppf = ppf.string (all s)
 let int d = string (string_of_int d)
 let float f = string (string_of_float f)
 
+
 let rec eval:
   type free right.
   formatter -> (free,unit,right,formatter) format
-  -> (free,unit) args -> (right,unit) args
+  -> (free,right,unit) iargs
   -> unit  =
-  fun ppf fmt xs ys -> match fmt,ys with
-    | [], ys -> ()
-    | Literal s :: q , ys -> string s ppf; eval ppf q xs ys
-    | Captured x:: q, ys -> x ppf; eval ppf q xs ys
-    | Var { typ; pos }:: q , ys -> typ (nth pos xs) ppf; eval ppf q xs ys
-    | Implicit_pos typ :: q , y :: ys -> typ y ppf; eval ppf q xs ys
-    | Implicit :: q, printer :: y :: ys -> printer y ppf; eval ppf q xs ys
-    | Ext_var { data_index; printer_index } :: q , ys ->
-      (nth printer_index xs) (nth data_index xs) ppf; eval ppf q xs ys
+  fun ppf fmt iargs -> match fmt with
+    | [] -> ()
+    | Literal s :: q  -> string s ppf; eval ppf q iargs
+    | Captured f:: q -> let g, iargs = f iargs in g ppf; eval ppf q iargs
 
-
-let eval ppf fmt args = eval ppf fmt args args
-
-(*
-let rec (^^): type right free.
-  (free,unit,right) format -> (free,unit,right) format -> (free,unit,right) format =
-  fun l r -> match l with
-    | [] -> r
-    | a :: q -> a :: (q ^^ r)
-*)
+let eval ppf fmt args = eval ppf fmt (Format.make args)
