@@ -19,6 +19,8 @@ let current (type all elt right stop) (x: (all,elt -> right,stop) iargs) =
   | a :: q -> a, { x with right = q}
   | [] -> raise Not_found
 
+type _ tag = ..
+type box = H | V | HOV | HV | B | Inherit of box | No_box
 
 type (_,_,_,_) token =
   | Literal: string -> ('list, 'close,'pos * 'pos,'fmt) token
@@ -26,6 +28,9 @@ type (_,_,_,_) token =
       ( ('list,'right,'close) iargs ->
         'fmt captured * ('list,'right2,'close) iargs )
       -> ('list,'close, 'right * 'right2 ,'fmt) token
+  | Open_tag: {tag: 'data tag; data:'data} ->
+    ('list, 'close,'pos * 'pos,'fmt) token
+  | Close_tag: _ tag -> ('list, 'close,'pos * 'pos,'fmt) token
 
 
 type (_,_,_,_) format =
