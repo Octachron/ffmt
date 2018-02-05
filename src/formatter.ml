@@ -4,12 +4,6 @@ open Format
 type range = {start:int; stop:int}
 type substring = { content:string; range:range }
 
-type geometry = { margin: int; max_indent:int }
-
-type indentation = { line: int; column:int }
-let zindent = { line=0; column=0 }
-
-type status = { position: int; indent: indentation; box_indent: indentation }
 
 let box_indent: Format.box -> _ = function
   | H -> 0
@@ -54,9 +48,9 @@ let init (type a b) ((module Sem) as semantic : (a,b) tagsem) =
 type open_tag = Open_tag: {tag:'a tag; with_box:bool} -> open_tag
 type t = {
   core: core;
-  geometry: geometry;
+  geometry: Geometry.t;
   open_tags: open_tag list;
-  position: status;
+  position: Geometry.position;
   open_boxes: box list;
   tag_semantic: t semantic_with_data;
 }
@@ -94,17 +88,14 @@ let null_semantic =
   (module Null_semantic: tag_semantic with type data = unit
                                        and type printer = printer  )
 
-let default_geometry = { margin = 78; max_indent=68 }
 
-let start = { position=0; indent=zindent; box_indent=zindent }
-
-let with_sem ?(geometry=default_geometry) f ?tag_semantic x =
+let with_sem ?(geometry=Geometry.default) f ?tag_semantic x =
   let tag_semantic =
   match tag_semantic with
   | None -> init null_semantic
   | Some x -> init x in
   { core = f x; open_tags = []; open_boxes = []; tag_semantic; geometry;
-    position = start;
+    position = Geometry.start;
   }
 
 let chan x = with_sem core_chan x
