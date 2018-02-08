@@ -13,10 +13,8 @@ type position = {
   line : int;
   column : int;
   indent : Indentation.t;
-  box_indent : Indentation.t
 }
 
 let start = { column=0;
               line = 0;
-              indent=Indentation.zero;
-              box_indent=Indentation.zero }
+              indent=Indentation.zero}

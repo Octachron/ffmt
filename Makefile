@@ -1,4 +1,4 @@
-all runtest:
+all: runtest
 	jbuilder build @install
 
 runtest:

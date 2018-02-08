@@ -21,6 +21,7 @@ let current (type all elt right stop) (x: (all,elt -> right,stop) iargs) =
 
 type _ tag = ..
 
+exception Unknown_tag
 type box = H  | V of int | HoV of int | HV of int | B of int
 
 type _ tag +=
@@ -29,6 +30,7 @@ type _ tag +=
   | V: int tag
   | HoV: int tag
   | HV: int tag
+
 
 type (_,_,_,_) token =
   | Literal: string -> ('list, 'close,'pos * 'pos,'fmt) token

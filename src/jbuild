@@ -3,5 +3,6 @@
 (library (
          (name stringi)
          (public_name stringi)
+         (libraries (containers.data))
  )
 )
