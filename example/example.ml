@@ -40,8 +40,10 @@ let test ppf s =
       !> B;
       b; l "a list:";b; (*l"123";*)
       (*!<v; l "123"; !>V; l " out";*)
-      !<v; l" 1";b; l "2";b; l "3"; b; l"4567890123456789";b; l"A"; !> V; b; l" out";
-      !> B
+      !<v; l"1";b; l "23"; b; l"4567"; b; l"89ABCDE"; b;
+      l"123456"; !> V; b; l "abcdef";
+      !> B;
+      !<(HV, 0); l"NCKLQ"; b; l"LAKCM"; b; l"ABCDEF"; b; l"CNKSS"; b; l"XLAXMA"; !>HV;
     ]
     [1;"How is your day N°"; float; 3.1415926535 ]
 
@@ -53,4 +55,4 @@ let stdout =
     ~geometry:Geometry.{margin=20;max_indent=10}
     Pervasives.stdout
 
-let () = test stdout "world"; print_newline ()
+let () = test stdout "world" |> ignore; print_newline ()

@@ -1,5 +1,5 @@
 
-type 'fmt captured = 'fmt -> unit
+type 'fmt captured = 'fmt -> 'fmt
 type ('a,'fmt) printer = 'a -> 'fmt captured
 
 type (_,_) index =
