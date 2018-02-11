@@ -38,7 +38,7 @@ type (_,_,_,_) token =
       ( ('list,'right,'close) iargs ->
         'fmt captured * ('list,'right2,'close) iargs )
       -> ('list,'close, 'right * 'right2 ,'fmt) token
-  | Open_tag: {tag: 'data tag; data:'data} ->
+  | Open_tag: ('data tag * 'data) ->
     ('list, 'close,'pos * 'pos,'fmt) token
   | Close_tag: _ tag -> ('list, 'close,'pos * 'pos,'fmt) token
   | Close_any_tag: ('list, 'close,'pos * 'pos,'fmt) token
@@ -61,6 +61,7 @@ let rec nth: type elt a right r. (elt,a) index -> (a,r) args -> elt = fun n  arg
   | _, [] -> raise Not_found
 
 let (.%()) iargs n = nth n iargs.all
+let nth x y = x.%(y)
 
 (*
 let rec (^^): type r right free fmt.

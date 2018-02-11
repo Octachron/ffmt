@@ -1,5 +1,7 @@
 (jbuild_version 1)
 
+(ocamllex (lex))
+
 (library (
  (public_name stringi-ppx)
  (name ppx)

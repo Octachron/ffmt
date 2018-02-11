@@ -21,8 +21,6 @@ type tag_name= Name: 'any Format.tag -> tag_name
 
 
 let string = E.string
-let int d = string (string_of_int d)
-let float f = string (string_of_float f)
 
 exception No_open_tag
 type exn += Mismatched_close: {expected:'any Format.tag; got:'other Format.tag}
@@ -40,7 +38,7 @@ let rec eval:
     | [] -> ppf
     | Literal s :: q  -> eval q iargs (string s ppf)
     | Captured f:: q -> let g, iargs = f iargs in eval q iargs (g ppf)
-    | Open_tag {tag;data} :: q ->
+    | Open_tag (tag,data) :: q ->
       let Spec.S s = ppf.logical.tag_semantic in
       let module Sem = (val s.semantic) in
       let with_box, open_box =

@@ -1,58 +1,36 @@
 open Stringi
-open Format
-open Formatter
+open Combinators
 
-let keep f x = f x, x
-let (!$) x = Captured (keep @@ fun iargs -> x)
-
-
-let (%:) n typ = Captured (keep @@ fun iargs -> typ iargs.%(n) )
-let (%:%) n p =
-  Captured ( keep @@ fun iargs -> iargs.%(p) iargs.%(n))
-
-let take f x = let elt, x = current x in f elt, x
-
-let skip f x = let _, x =current x in f x
-
-let (!<) (tag,data): _ token = Open_tag {tag;data}
-
-let (!>) tag = Close_tag tag
-
-let (!%) x = Captured(take x)
-let (!%%) x = Captured(skip @@ take x )
-let (!%%%) x = Captured(skip @@ skip @@ take x)
-
-let box n = B, 1
-
-let v = V,2
-
-let b = Break{space=1; indent=0}
-
-let l x = Literal x
 let test ppf s =
-  eval ppf
+  Formatter.eval ppf
     [ !<(box 1); l"123:";
-      !<(box 1); l[%fmt ""]; l" "; !$(string s); l" N°"; (Z %: int); l"?";
+      !<(box 1); l"Hello"; l" "; ! !$(string s); l" N°"; !(Z %: int); l"?";
       b;
-      (S Z %: string ); !%int; l"?";
+      !(S Z %: string ); ! !%int; l"?";
       b;
-      l"π="; (S (S (S Z))) %:% S (S Z); l" or "; !%%%float ; l"!";
-      !> B;
+      l"π="; ! ((S (S (S Z))) %:% S (S Z)); l" or "; ! !%%%float ; l"!";
+      !> b0;
       b; l "a list:";b; (*l"123";*)
       (*!<v; l "123"; !>V; l " out";*)
       !<v; l"1";b; l "23"; b; l"4567"; b; l"89ABCDE"; b;
-      l"123456"; !> V; b; l "abcdef";
-      !> B;
-      !<(HV, 0); l"NCKLQ"; b; l"LAKCM"; b; l"ABCDEF"; b; l"CNKSS"; b; l"XLAXMA"; !>HV;
+      l"123456"; !> v; b; l "abcdef";
+      !> b0;
+      !<hv; l"NCKLQ"; b; l"LAKCM"; b; l"ABCDEF"; b; l"CNKSS"; b; l"XLAXMA"; !>hv;
     ]
     [1;"How is your day N°"; float; 3.1415926535 ]
 
 
-let test' ppf world = "Hello %{s world} N° %d$0! %s$1%d? π=%{3s 2s}"
+let test' ppf world =
+  Formatter.eval ppf
+    [%fmt {|123: @{<box 0>今日は κοσμοσ N°%d!@ %s$1%d$0?@ Time flows@}|}]
+    [1; "How is your day N°"]
+
 
 let stdout =
   Formatter.chan
     ~geometry:Geometry.{margin=20;max_indent=10}
     Pervasives.stdout
 
-let () = test stdout "world" |> ignore; print_newline ()
+let () =
+  test stdout "world" |> ignore; print_newline ();
+  test' stdout "world" |> ignore; print_newline ();
