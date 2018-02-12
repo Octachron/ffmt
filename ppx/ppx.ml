@@ -3,18 +3,28 @@ open Ppx_core.Light
 let name = "stringi-ppx"
 
 
-let stream s =
-  let lexbuf = Lexing.from_string s in
-  fun () -> Lex.main lexbuf
+let (@?) lex loc =
+  lex.Lexing.lex_start_p <- loc.loc_start;
+  lex.lex_curr_p <- loc.loc_end;
+  lex
+
+let stream loc s =
+  let lexbuf = Lexing.from_string s @? loc in
+  let loc loc_start loc_end= Location.{ loc_start; loc_end; loc_ghost = true } in
+  fun () -> Lex.main lexbuf,
+            loc lexbuf.lex_start_p lexbuf.lex_curr_p
 
 let stop = [%expr [] ]
 let (@::) x y = [%expr [%e x] :: [%e y] ]
 
-let ghost = Location.none
-let str x = Ast_builder.Default.estring ghost x
-let subparser x =
+let str loc x = Ast_builder.Default.estring loc x
+
+
+
+
+let subparser loc x =
   let lexbuf = Lexing.from_string x in
-  Parser.parse_expression Lexer.token lexbuf
+  Parser.parse_expression Lexer.token (lexbuf @? loc)
 
 let implicit = function
   | "d" -> [%expr int]
@@ -33,23 +43,25 @@ let escaped x =("%"^x^"%")
 let ge x = B.evar (escaped x)
 let gp x = B.pvar (escaped x)
 
-let rec ast stream = match stream () with
+let rec ast stream =
+  let tok, loc = stream () in
+  match tok with
   | Lex.EOF ->  stop
   | TEXT t ->
-    [%expr Literal [%e str t] ] @:: ast stream
+    [%expr Literal [%e str loc t] ] @:: ast stream
   | FRAG s ->
-    let captured = subparser s in
+    let captured = subparser loc s in
     [%expr Captured [%e captured]] @:: ast stream
   | OPEN_IMPLICIT_TAG ->
     [%expr Open_tag(B,1)] @:: ast stream
   | OPEN_TAG s ->
-    let box = subparser s in
+    let box = subparser loc s in
     [%expr Open_tag [%e box] ] @:: ast stream
   | CLOSE_TAG ->
     [%expr Close_any_tag] @:: ast stream
   | BREAK {space;indent} ->
-    let space = Ast_builder.Default.eint ghost space
-    and indent = Ast_builder.Default.eint ghost indent in
+    let space = Ast_builder.Default.eint loc space
+    and indent = Ast_builder.Default.eint loc indent in
     [%expr Break {space=[%e space]; indent=[%e indent] } ] @:: ast stream
   | IMPLICIT_FRAG "a" ->
     [%expr Captured (fun ({ right = a :: b :: right; _ } as iargs) ->
@@ -67,8 +79,8 @@ let rec ast stream = match stream () with
     ] @:: ast stream
 
   | POS_IMPLICIT_FRAG (n,pos) ->
-    let pargs = gp "iargs" ghost in
-    let eargs = ge "iargs" ghost in
+    let pargs = gp "iargs" loc in
+    let eargs = ge "iargs" loc in
     let arg = [%expr nth [%e eargs] [%e nat pos]] in
     [%expr Captured (fun [%p pargs] ->
         [%e implicit n] [%e arg], [%e eargs]
@@ -77,8 +89,8 @@ let rec ast stream = match stream () with
 
 
 
-let build ~loc:_ ~path:_ s =
-  [%expr Stringi.Format.( [%e ast @@ stream s] ) ]
+let build ~loc ~path:_ s =
+  [%expr Stringi.Format.( [%e ast @@ stream loc s] ) ]
 
 
 
