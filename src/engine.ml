@@ -332,7 +332,7 @@ let break br ppf =
   match ppf.status with
   | Direct d -> begin match d.kind with
       | H -> { ppf with status = Direct (physpace br.space d ppf.logical.phy) }
-      | V more -> { ppf with status = Direct (newline more d ppf) }
+      | V more -> { ppf with status = Direct (newline br.indent d ppf) }
       | b ->
         if d.position + br.space > ppf.logical.geometry.margin
         || (eager_indent b && d.indent + br.indent + box_indent b  < d.last_indent)
