@@ -64,16 +64,18 @@ type direct =
     position:int; (** we are currently writing at position *)
     kind:box; (** with this box context *)
     indent:int; (** and at this indentation *)
+    last_indent:int (** the previous line break was done with this indent *)
   }
 
 type suspension =
       { blocked_at:int; (** we are blocked at this position *)
         break:break; (** because we don't know how to interpret this break *)
         box: Format.box; (** in this box context *)
-        indent: int;
+        indent: int; (** with this indentation *)
         after_block: suspended_lit S.t;
         (** we already have computed these token after the block *)
-        right: int (** and we ended at this position < margin *);
+        right: int (** and we are currently at this position < margin *);
+        last_indent: int; (** the last line break was done with this indent *)
       }
 
 let last_box sp str =
@@ -115,7 +117,7 @@ let phyline more (d:direct) (phy:Spec.phy) =
     phy.break ();
     phy.indent {I.line = 0; column=indent};
     debug "line break ⇒ %d" indent;
-    { d with position = indent }
+    { d with position = indent; last_indent = indent }
 
 let newline more (d:direct) ppf =
   phyline more d ppf.logical.phy
@@ -210,7 +212,8 @@ let rec advance_to_next_ambiguity (direct:direct) stream (ppf:t) =
                   indent = direct.indent;
                   box = direct.kind;
                   after_block = rest;
-                  right = suspended_len stream direct
+                  right = suspended_len stream direct;
+                  last_indent = direct.last_indent;
                 } in
     debug "Advance up to new break, stop at %d" direct.position;
     { ppf with status }
@@ -234,6 +237,21 @@ let advance_to_next_ambiguity direct stream ppf =
   debug "Advance up to new break, start at %d" direct.position;
   advance_to_next_ambiguity direct stream ppf
 
+let actualize_break sd right ppf after =
+  debug "margin exceeded %d>%d" right ppf.logical.geometry.margin;
+  let direct =
+    { position = sd.blocked_at; indent = sd.indent;
+      kind = sd.box; last_indent = sd.last_indent } in
+  let direct = newline sd.break.indent direct ppf in
+  match sd.box with
+  | HV n ->
+    let status = advance_to_next_box
+        { direct with kind = V n } ppf.logical.phy after in
+    { ppf with status }
+  | b ->
+    advance_to_next_ambiguity direct after ppf
+
+
 let string s ppf =
   match ppf.status with
   | Direct d ->
@@ -243,18 +261,8 @@ let string s ppf =
     let after_block = S.push_back (Lit (Str s)) sd.after_block in
     debug "suspended printing «%s» %d|%d ⇒ %d > %d ? "
       s sd.indent sd.right right ppf.logical.geometry.margin;
-    if right > ppf.logical.geometry.margin then begin
-      debug "margin exceeded %d>%d" right ppf.logical.geometry.margin;
-      let direct = { position = sd.blocked_at; indent = sd.indent; kind = sd.box } in
-      let direct = newline sd.break.indent direct ppf in
-      match sd.box with
-      | HV n ->
-        let status = advance_to_next_box
-            { direct with kind = V n } ppf.logical.phy after_block in
-        { ppf with status }
-      | b ->
-        advance_to_next_ambiguity direct after_block ppf
-    end
+    if right > ppf.logical.geometry.margin then
+      actualize_break sd right ppf after_block
     else
      ( debug "suspending «%s»" s;
       { ppf with status = Suspended { sd with after_block; right } }
@@ -273,15 +281,15 @@ let open_box b ppf =
         { s with after_block = S.push_back (Open_box b) s.after_block } in
     { ppf with status }
 
-let reactivate position ppf =
+let reactivate position last_indent ppf =
    match ppf.context with
      | [] ->
        debug "reopened empty";
-       { position; indent = 0; kind = H }, ([]: _ list)
+       { position; indent = 0; kind = H; last_indent }, ([]: _ list)
      (** empty box *)
      | {kind;indent} :: q ->
        debug "Reopened %a ⇒ %d" pp_box kind indent;
-       { position; indent; kind}, q
+       { position; indent; kind; last_indent }, q
 
 let rec coalesce ppf sp stream lits =
   match S.(take back) stream with
@@ -301,7 +309,8 @@ let rec coalesce ppf sp stream lits =
            content = Break sp.break :: lits} in
     let status =
       Suspended { sp with after_block  = S.push_back (Lit c) stream } in
-    let direct, (context: _ list) = reactivate sp.blocked_at ppf in
+    let direct, (context: _ list) =
+      reactivate sp.blocked_at sp.last_indent ppf in
     let stream = S.push_back (Lit c) S.empty in
     advance_to_next_ambiguity direct stream { ppf with context; status }
 
@@ -309,31 +318,52 @@ let close_box ppf =
   debug "close box";
   match ppf.status with
   | Direct d ->
-    let direct, context = reactivate d.position ppf in
+    let direct, context = reactivate d.position d.last_indent ppf in
     { ppf with status = Direct direct; context }
   | Suspended sp ->
     debug "coalesce";
     coalesce ppf sp sp.after_block []
 
-let break br ppf = match ppf.status with
+let eager_indent: box -> _ = function
+  | B _ -> true
+  | _ -> false
+
+let break br ppf =
+  match ppf.status with
   | Direct d -> begin match d.kind with
       | H -> { ppf with status = Direct (physpace br.space d ppf.logical.phy) }
       | V more -> { ppf with status = Direct (newline more d ppf) }
-      | HV more | HoV more | B more as b ->
-        let status =
-          Suspended { blocked_at = d.position;
-                      break = br;
-                      box = b;
-                      after_block = S.empty;
-                      indent = d.indent;
-                      right = d.position + br.space;
-                    } in
-        { ppf with status } end
+      | b ->
+        if d.position + br.space > ppf.logical.geometry.margin
+        || (eager_indent b && d.indent + br.indent + box_indent b  < d.last_indent)
+        then
+            let kind: box = match d.kind with HV n -> V n | b -> b in
+            let direct = newline br.indent { d with kind } ppf in
+            { ppf with status = Direct direct }
+          else
+            let status =
+              Suspended { blocked_at = d.position;
+                          break = br;
+                          box = b;
+                          after_block = S.empty;
+                          indent = d.indent;
+                          right = d.position + br.space;
+                          last_indent = d.last_indent
+                        } in
+            { ppf with status } end
   | Suspended sd ->
+    let right = sd.right + br.space in
     let after_block = S.push_back (Break br) sd.after_block  in
-    let direct = { position = sd.blocked_at; indent = sd.indent; kind = sd.box } in
+    let direct =
+      { position = sd.blocked_at; indent = sd.indent; kind = sd.box;
+        last_indent = sd.last_indent } in
     debug "waiting for break resolution at %d" direct.position;
-    match sd.box with
+    let b = sd.box in
+    if right > ppf.logical.geometry.margin
+       || (eager_indent b && sd.indent + br.indent + box_indent b < sd.last_indent)
+    then
+      actualize_break sd right ppf after_block
+    else match sd.box with
     | HoV _ | B _ when not (secondary_box sd.after_block) ->
       let direct = physpace sd.break.space direct ppf.logical.phy in
       advance_to_next_ambiguity direct after_block ppf

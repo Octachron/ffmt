@@ -7,7 +7,8 @@ let with_sem f = fun ?(geometry=Geometry.default) ?tag_semantic x ->
   | None -> Spec.init Semantics.box
   | Some x -> Spec.init x in
   let logical = { Spec.phy = f x; tag_semantic; geometry; open_tags = [] } in
-  { E.logical; status = Direct {position=0;indent=0; kind=H }; context = [] }
+  { E.logical; status = Direct {position=0;indent=0; kind=H; last_indent=0 };
+    context = [] }
 
 let chan ?geometry = with_sem Spec.chan ?geometry
 let buffer ?geometry = with_sem Spec.buffer ?geometry

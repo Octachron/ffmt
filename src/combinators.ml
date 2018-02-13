@@ -26,9 +26,10 @@ let (!%%%) x = (skip @@ skip @@ take x)
 let box n = B, n
 let b0 = box 0
 
-let v = V,2
-let hv = HV, 0
-
+let b n = B, n
+let v n = V, n
+let hv n = HV, n
+let hov n = HoV, n
 
 let b = Break{space=1; indent=0}
 
