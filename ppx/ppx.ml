@@ -8,10 +8,10 @@ let (@?) lex loc =
   lex.lex_curr_p <- loc.loc_end;
   lex
 
-let stream loc s =
+let stream lex loc s =
   let lexbuf = Lexing.from_string s @? loc in
   let loc loc_start loc_end= Location.{ loc_start; loc_end; loc_ghost = true } in
-  fun () -> Lex.main lexbuf,
+  fun () -> lex lexbuf,
             loc lexbuf.lex_start_p lexbuf.lex_curr_p
 
 let stop = [%expr [] ]
@@ -43,6 +43,32 @@ let escaped x =("%"^x^"%")
 let ge x = B.evar (escaped x)
 let gp x = B.pvar (escaped x)
 
+
+let contextualize n s =
+  let rec args last k =
+    if k = last then ["right; _ } as iargs)"]
+    else ["x"; string_of_int k; "::"] @ args last (k+1) in
+  String.concat "" @@
+    "fun ({ right = " :: args n 0 @ "->(" :: s @ ["), iargs"]
+
+let rec snat = function
+  | 0 -> "Z"
+  | k when k < 0 -> "Z"
+  | k -> "S (" ^ snat (k-1) ^ ")"
+
+let frag loc s=
+  let s = stream Lex.subfrags loc s in
+  let rec rewrite n ls = let tok, loc = s () in
+    match tok with
+    | Lex.EOF -> contextualize n @@ List.rev @@ ls
+    | IMPLICIT_POS_ARG pos -> rewrite n @@ "))" :: (snat pos) :: "(nth iargs (" :: ls
+    | IMPLICIT_ARG skip ->
+      Format.eprintf "Skip %d ⇒ %d@." skip n;
+      rewrite (n+skip+1) @@ ("x" ^ string_of_int(n + skip)) :: ls
+    | TEXT t -> rewrite n @@ t :: ls
+    | _ -> rewrite n ls in
+  subparser loc @@ rewrite 0 []
+
 let rec ast stream =
   let tok, loc = stream () in
   match tok with
@@ -50,7 +76,7 @@ let rec ast stream =
   | TEXT t ->
     [%expr Literal [%e str loc t] ] @:: ast stream
   | FRAG s ->
-    let captured = subparser loc s in
+    let captured = frag loc s in
     [%expr Captured [%e captured]] @:: ast stream
   | OPEN_IMPLICIT_TAG ->
     [%expr Open_tag(B,1)] @:: ast stream
@@ -86,11 +112,12 @@ let rec ast stream =
         [%e implicit n] [%e arg], [%e eargs]
       )
     ] @:: ast stream
-
+  | _ -> assert false
 
 
 let build ~loc ~path:_ s =
-  [%expr Stringi.Format.( [%e ast @@ stream loc s] ) ]
+  let frag = ast @@ stream Lex.main loc s in
+  [%expr Stringi.Format.( [%e frag ] ) ]
 
 
 

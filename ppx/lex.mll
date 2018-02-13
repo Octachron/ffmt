@@ -10,6 +10,9 @@
   | BREAK of {space:int; indent: int}
   | IMPLICIT_FRAG of string
   | POS_IMPLICIT_FRAG of string * int
+
+  | IMPLICIT_POS_ARG of int
+  | IMPLICIT_ARG of int
   let bfrag = Buffer.create 17
   let char= String.make 1
 
@@ -45,3 +48,12 @@ and frag count = parse
 and open_box = parse
   | "<" ([^ '>']* as tag) ">"  { OPEN_TAG tag }
   | "" { OPEN_IMPLICIT_TAG }
+
+and subfrags = parse
+  | "$"(num as n)  { IMPLICIT_POS_ARG (int_of_string n) }
+  | ("_"* as skip) "*" { IMPLICIT_ARG (String.length skip) }
+  | "_"  { TEXT "_" }
+  | "\\*"  { TEXT "*" }
+  | "$" | "\\$"  { TEXT "$" }
+  | [^ '$' '*' '_']+ as t { TEXT t }
+  | eof  { EOF }

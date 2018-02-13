@@ -19,11 +19,15 @@ let test ppf s =
     ]
     [1;"How is your day N°"; float; 3.1415926535 ]
 
-
 let test' ppf world =
   Formatter.eval ppf
-    [%fmt {|123: @{<box 0>今日は κοσμοσ N°%d!@ %s$1%d$0?@ Time flows@}|}]
-    [1; "How is your day N°"]
+    [%fmt "@{<box 1> 123: @{<box 1>今日は %{string \"κοσμοσ\"} N°%d!@ %s$1%d$0?@ \
+           π=%{$2 $3} or %{float __*}!@}@ \
+           a list:@ @{<v>1@ 23@ 4567@ 89ABCDE@ 123456@}@ abcdef@}\
+           @{<hv>NCKLQ@ LAKCM@ ABCDEF@ CNKSS@ XLAXMA@}\
+          "
+    ]
+    [1; "How is your day N°"; float; 3.1415926535 ]
 
 
 let stdout =
