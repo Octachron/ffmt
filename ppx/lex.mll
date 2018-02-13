@@ -8,6 +8,7 @@
   | CLOSE_TAG
   | EOF
   | BREAK of {space:int; indent: int}
+  | FULL_BREAK of int
   | IMPLICIT_FRAG of string
   | POS_IMPLICIT_FRAG of string * int
 
@@ -29,7 +30,9 @@ rule main = parse
  | "%%" { TEXT "%" }
  | "%" (implicit as i) { IMPLICIT_FRAG (char i) }
  | "%" (implicit as i) "$" (num as n) { POS_IMPLICIT_FRAG (char i, int_of_string n) }
-| "@," { BREAK{space=0; indent=0} }
+ | "@\n" { FULL_BREAK 0 }
+ | "@\n<"(num as n)">" { FULL_BREAK (int_of_string n) }
+ | "@," { BREAK{space=0; indent=0} }
  | "@ " { BREAK{space=1; indent=0} }
  | "@;<"(num as space) (num as indent) ">"
  { BREAK{space=int_of_string space; indent = int_of_string indent } }

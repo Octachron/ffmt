@@ -43,6 +43,8 @@ type (_,_,_,_) token =
   | Close_tag: _ tag -> ('list, 'close,'pos * 'pos,'fmt) token
   | Close_any_tag: ('list, 'close,'pos * 'pos,'fmt) token
   | Break: { indent: int; space:int } -> ('list, 'close,'pos * 'pos,'fmt) token
+  | Full_break: int -> ('list, 'close,'pos * 'pos,'fmt) token
+
 
 type (_,_,_,_) format =
   | []: ('any,'result, 'right,'fmt) format

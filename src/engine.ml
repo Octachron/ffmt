@@ -10,6 +10,7 @@ let pp_box (ppf:out_channel): Format.box -> unit = function
 
 
 open Format
+
 type break = { space: int; indent: int }
 
 type blocked_box = S_HV of int | S_HoV of int | S_B of int
@@ -88,6 +89,10 @@ let last_box sp str =
 
 let secondary_box str =
   S.M.exists (fun _ -> function Open_box _ -> true | _ -> false) str
+
+let only_boxes str =
+  S.M.for_all (fun _ -> function Open_box _ -> true | _ -> false) str
+
 
 type status =
   | Direct of direct
@@ -371,3 +376,22 @@ let break br ppf =
       let right = suspended_len after_block direct in
       debug "break in not hov ⇒ %d" right;
       { ppf with status = Suspended { sd with after_block; right  } }
+
+
+let rec full_break br ppf =
+  match ppf.status with
+  | Direct d ->
+    { ppf with status = Direct (phyline br d ppf.logical.phy) }
+  | Suspended sd ->
+    let right = box_indent sd.box + sd.indent + br in
+    let direct =
+      { position = sd.blocked_at; indent = sd.indent; kind = sd.box;
+        last_indent = sd.last_indent } in
+    match sd.box with
+    | HoV _ | B _ when not (secondary_box sd.after_block) ->
+      let direct = physpace sd.break.space direct ppf.logical.phy in
+      ppf |> advance_to_next_ambiguity direct sd.after_block |> full_break br
+    | _ ->
+      debug "breaking with a full break at %d" direct.position;
+      let next = actualize_break sd right ppf sd.after_block in
+      full_break br next

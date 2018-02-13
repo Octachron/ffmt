@@ -112,6 +112,7 @@ let rec ast stream =
         [%e implicit n] [%e arg], [%e eargs]
       )
     ] @:: ast stream
+  | FULL_BREAK n -> [%expr Full_break [%e B.eint loc n]] @:: ast stream
   | _ -> assert false
 
 
