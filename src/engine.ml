@@ -1,349 +1,343 @@
 
+let debug fmt = Printf.eprintf ("debug: "^^fmt ^^ "\n%!")
+
+let pp_box (ppf:out_channel): Format.box -> unit = function
+  | V n -> Printf.fprintf ppf "V %d" n
+  | HV n -> Printf.fprintf ppf "HV %d" n
+  | HoV n -> Printf.fprintf ppf "HoV %d" n
+  | B n -> Printf.fprintf ppf "B %d" n
+  | H -> Printf.fprintf ppf "H"
+
+
 open Format
+type break = { space: int; indent: int }
 
-module Deque = CCDeque
+type blocked_box = S_HV of int | S_HoV of int | S_B of int
 
+type open_box_on_the_left = {indent:int;kind:box}
 
-let box_indent: Format.box -> _ = function
-  | H -> 0
-  | V n | B n | HV n | HoV n -> n
+type resolved_lit =
+    Str of string | Break of break
+  | Box of {vertical:bool; more:int; content:resolved_lit list}
+type suspended_lit =
+    Break of break | Lit of resolved_lit | Open_box of box
 
-type lit_token = { fmt: 'a 'b 'c 'd. ('a,'b,'c * 'c,'d) token } [@@unboxed]
-type break = { indent: int; space: int }
+module S = struct
+  module M= Map.Make(struct
+      type t = int
+      let compare (x:int) (y:int) = compare x y
+    end)
 
+  type 'a t = 'a M.t
+  let front = M.min_binding
+  let back = M.max_binding
 
-type eagerness = Strict | Lazy_up_to_break | Lazy
-type open_box =
-  { kind:box;
-    mutable indent:int;
-    mutable right:int;
-    mutable eager:eagerness;
-    deferred: lit_token Queue.t;
+  let max x = fst @@ back x
+  let min x = fst @@ front x
+  let last x = snd @@ back x
+  let first x = snd @@ front x
+
+  let push_back x m =
+    if M.cardinal m = 0 then
+      M.add 0 x m
+    else
+      let max = max m in
+      M.add (max +1) x m
+
+  let take pos m =
+    let max, elt =  pos m in
+    elt, M.remove max m
+
+  let cardinal = M.cardinal
+  let empty = M.empty
+  let fold = M.fold
+end
+
+type context =
+  { indent: int;
+    left_context: open_box_on_the_left list;
+    (** on the left, we have those inactive boxes *)
   }
 
-type open_tag = Open_tag: {tag:'a tag; with_box:bool} -> open_tag
-type t = {
-  spec : t Spec.t;
+type direct =
+  {
+    position:int; (** we are currently writing at position *)
+    kind:box; (** with this box context *)
+    indent:int; (** and at this indentation *)
+  }
 
-  mutable open_tags: open_tag list;
-  mutable backtrack: Geometry.position;
-  mutable position: Geometry.position;
-  open_boxes: open_box CCDeque.t;
-  after_boxes: open_box list ref;
+type suspension =
+      { blocked_at:int; (** we are blocked at this position *)
+        break:break; (** because we don't know how to interpret this break *)
+        box: Format.box; (** in this box context *)
+        indent: int;
+        after_block: suspended_lit S.t;
+        (** we already have computed these token after the block *)
+        right: int (** and we ended at this position < margin *);
+      }
+
+let last_box sp str =
+  let rec search mx =
+    match S.M.find_opt mx str with
+    | Some Open_box b -> b
+    | Some _ -> search (mx - 1)
+    | None -> sp.box in
+  search (S.max str)
+
+let secondary_box str =
+  S.M.exists (fun _ -> function Open_box _ -> true | _ -> false) str
+
+type status =
+  | Direct of direct
+  (** We are directly writing to the logical device *)
+
+  | Suspended of suspension
+  (**We are blocked at an ambiguous break, waiting for the decision on
+     how to interpret it *)
+
+type t = {
+  logical: t Spec.t;
+  context: open_box_on_the_left list;
+  status:status;
 }
 
+let len = String.length
 
-  let pp_box ch (x:box) = Printf.fprintf ch (match x with
-    | H -> "H"
-    | V _ ->  "V"
-    | HoV _ -> "HoV"
-    | B _ -> "B"
-    | HV _ -> "HV"
-    )
-
-  let len = String.length
-  let pp_pos ch ppf =
-    Printf.fprintf ch "position: %d" ppf.position.column
+module I = Geometry.Indentation
 
 
-  let newline base indent_t ppf =
-    Printf.eprintf "indent:%d⇒%d\n%!" base indent_t;
-    let {Geometry.line; column; _ } = ppf.position in
-    let indent =
-      { Geometry.Indentation.line = 0; column = indent_t } in
-    let pos = {Geometry.line = line + 1; column = indent_t; indent } in
-    ppf.position <- pos;
-    ppf.backtrack <- { pos with column = base;  indent };
-    ppf.spec.phy.break ();
-    ppf.spec.phy.indent indent
+let box_indent: box -> int = function
+  | B n | HV n | HoV n | V n-> n
+  | H -> 0
 
-  let space n = fun ppf ->
-    ppf.position <- { ppf.position with column = ppf.position.column + n };
-    ppf.spec.phy.space n
+let phyline more (d:direct) (phy:Spec.phy) =
+    let indent = d.indent + more + box_indent d.kind in
+    phy.break ();
+    phy.indent {I.line = 0; column=indent};
+    debug "line break ⇒ %d" indent;
+    { d with position = indent }
 
-  let eager_string s ppf =
-    ppf.position <- { ppf.position with column = ppf.position.column + len s };
-    ppf.spec.phy.string (Spec.all s)
+let newline more (d:direct) ppf =
+  phyline more d ppf.logical.phy
 
-  let deferred ppf = match (Deque.peek_back ppf.open_boxes).eager with
-    | exception Deque.Empty -> false
-    | Strict -> false
-    | Lazy | Lazy_up_to_break -> true
+let physpace n d (phy:Spec.phy) =
+  phy.space n;
+  { d with position = n + d.position }
+(*
+let space n d ppf =
+  { ppf with status = Direct (physpace n d ppf.logical.phy) }
+*)
 
+let phystring s d (phy:Spec.phy) =
+  debug "direct printing «%s», %d ⇒ %d" s d.position (d.position + len s);
+  phy.string (Spec.all s);
+  { d with position = d.position + len s }
 
-  let len_lit {fmt} = match fmt with
-    | Literal s -> len s
-    | Break br -> br.space
-    | _ -> assert false
+let direct_string s d ppf =
+  let status = Direct (phystring s d ppf.logical.phy) in
+  { ppf with status }
 
-  let go_right ppf =
-    Printf.eprintf "Go right\n%!";
-    let ppf = { ppf with position = ppf.backtrack } in
-    Printf.eprintf "backtracking to %d\n%!" ppf.position.column;
-    match Deque.take_front ppf.open_boxes with
-    | exception Deque.Empty -> ()
-    | main ->
-      Deque.iter (fun box ->
-          let pos = ppf.position in
-          Printf.eprintf "Repositioning %a box, indent: %d \n" pp_box box.kind
-            box.indent;
-          Printf.eprintf "Setting indentation to %d\n%!" pos.column;
-          box.indent <- pos.column;
-          let right = Queue.fold (fun r x -> r + len_lit x) 0 box.deferred in
-            box.right <- right;
-          Printf.eprintf "Setting position to %d\n%!" (pos.column + box.right);
-          ppf.position <- { pos with column = pos.column + box.right }
-        ) ppf.open_boxes;
-      Deque.push_front ppf.open_boxes  main;
-    Printf.eprintf "Right position %d\n%!" ppf.position.column
+let rec suspended_lit_len vert indent current: _ list -> _  = function
+  | Str s :: q ->
+    debug "str %d ⇒ %d" current (current + len s);
+    suspended_lit_len vert indent (current + len s) q
+  | Break br :: q->
+    if vert then suspended_lit_len vert (indent + br.indent) (indent + br.indent) q
+    else suspended_lit_len vert indent (current + br.space) q
+  | Box box :: q ->
+    suspended_lit_len vert (indent + box.more)
+      (suspended_lit_len box.vertical current current box.content) q
+  | [] -> debug "lit: ⇒ %d" current; current
 
+let is_vertical (x: box) = match x with V _ -> true | _ -> false
 
-  let eager_reeval box =
-     if box.eager <> Strict then
-        begin match box.kind with
-        | HoV _ | B _ -> box.eager <- Strict
-        | HV _ -> box.eager <- Lazy
-        | H | V _ ->  box.eager <- Strict
-        end
+let suspended_len_tok direct = function
+  | Break b -> begin
+      match direct.kind with
+      | V more -> { direct with position = direct.indent + more + b.indent }
+      | _ ->
+        debug "break %d ⇒ %d" direct.position (direct.position + b.space);
+        { direct with position = direct.position + b.space }
+    end
+  | Open_box v -> { direct with indent = direct.position; kind = v }
+  | Lit l ->
+    let vertical = is_vertical direct.kind  in
+    { direct with position =
+                    suspended_lit_len vertical direct.indent direct.position [l]}
 
-  let update_boxes_when_empty ppf =
+let suspended_len stream direct =
+  let all =
+    S.fold (fun _key tok direct -> suspended_len_tok direct tok)
+      stream direct in
+  debug "reevaluted size: %d ⇒ %d "direct.position all.position;
+  all.position
 
-    match Deque.length ppf.open_boxes with
-    | 0 -> ()
-    | 1 ->
-      let box = Deque.peek_front ppf.open_boxes in
-      eager_reeval box
-    | _ ->
-      let box = Deque.take_front ppf.open_boxes in
-      ppf.after_boxes := { box with right = 0 } :: !(ppf.after_boxes);
-      Printf.eprintf "Box transfer: open: %d ⇒ after: %d \n"
-        (Deque.length ppf.open_boxes) (List.length !(ppf.after_boxes))
+let to_sbox: Format.box -> _ = function
+  | HV n -> S_HV n
+  | HoV n -> S_HoV n
+  | B n -> S_B n
+  | H | V _ -> raise (Invalid_argument "H or V box cannot be suspended")
 
+let commit_resolved_literal phy (d:direct) =
+  let rec elt phy d =  function
+    | Str s -> phystring s d phy
+    | Break br ->
+      if is_vertical d.kind then phyline br.indent d phy
+      else physpace br.space d phy
+    | Box b ->
+      let kind: box = if b.vertical then V b.more else d.kind in
+      let inside =
+        List.fold_left (elt phy) {d with indent = d.position; kind} b.content in
+      { d with position = inside.position } in
+  List.fold_left (elt phy) d
 
-  let rec dequeue ppf = match Deque.peek_front ppf.open_boxes with
-    | exception Deque.Empty -> ()
-    | b ->
-      match (Queue.peek b.deferred).fmt with
-      | exception Queue.Empty ->
-        Printf.eprintf "empty queue\n%!";
-        update_boxes_when_empty ppf
-      | Literal s ->
-        Printf.eprintf "dequeued «%s», starting at %d\n%!" s ppf.position.column;
-        ignore (Queue.pop b.deferred); eager_string s ppf;
-        ppf.backtrack <- ppf.position;
-        Printf.eprintf "dequeue: backtrack set at: %d\n%!" ppf.position.column;
-        dequeue ppf
-      | Break br ->
-        begin
-        Printf.eprintf "dequeued stopped at a break\n%!";
-          match b.kind with
-          | V n ->
-            ignore (Queue.pop b.deferred);
-            newline b.indent (n + br.indent + b.indent) ppf;
-            dequeue ppf
-          | H -> ignore (Queue.pop b.deferred); space br.space ppf;
-            dequeue ppf
-          | HoV _ | HV _ | B _ -> ()
-        end
-      | _ -> assert false
+let rec advance_to_next_ambiguity (direct:direct) stream (ppf:t) =
+  match S.(take front) stream with
+  | Open_box b, rest ->
+    debug "advance open box %a" pp_box b;
+    (* When we meet a box without any ambiguity on its position,
+       we put the current box on the left stack, and focus on this
+       new box *)
+    let indent = direct.position in
+    let context: open_box_on_the_left list =
+      { kind = direct.kind; indent = direct.indent } :: ppf.context in
+    advance_to_next_ambiguity
+      { direct with indent; kind = b } rest { ppf with context }
+  | Break b, rest ->
+    let status =
+      Suspended { blocked_at = direct.position;
+                  break = b;
+                  indent = direct.indent;
+                  box = direct.kind;
+                  after_block = rest;
+                  right = suspended_len stream direct
+                } in
+    debug "Advance up to new break, stop at %d" direct.position;
+    { ppf with status }
+  | Lit s, rest ->
+    debug "advance lit";
+    let direct = commit_resolved_literal ppf.logical.phy direct [s] in
+    advance_to_next_ambiguity direct rest ppf
+  | exception Not_found ->
+    debug "empty stream: stop advance at %d" direct.position;
+    { ppf with status = Direct direct }
 
+let rec advance_to_next_box (direct:direct) phy stream =
+  match S.(take front) stream with
+  | Open_box b, stream -> Direct { direct with kind = b }
+  | Break b, stream -> advance_to_next_box (phyline b.indent direct phy) phy stream
+  | Lit s, stream ->
+    advance_to_next_box (commit_resolved_literal phy direct [s]) phy stream
+  | exception Not_found -> Direct direct
 
-  let dequeue ppf =
-    ppf.position <- ppf.backtrack;
-    dequeue ppf;
-    go_right ppf
+let advance_to_next_ambiguity direct stream ppf =
+  debug "Advance up to new break, start at %d" direct.position;
+  advance_to_next_ambiguity direct stream ppf
 
-  let transform_box_after_break = function
-    | { kind = HV n; _ } as b -> { b with kind = V n }
-    | b -> b
-
-  let rec propagate_break ppf =
-    Printf.eprintf "Break propagation\n%!";
-    match Deque.peek_front ppf.open_boxes  with
-    | exception Deque.Empty -> ()
-    | b ->
-      match (Queue.peek b.deferred).fmt with
-      | exception Queue.Empty ->
-        update_boxes_when_empty ppf; propagate_break ppf
-      | Break { indent; _ } ->
-        let b = transform_box_after_break b in
-        ppf.position <- ppf.backtrack;
-        newline b.indent (indent + b.indent + box_indent b.kind) ppf;
-        ignore @@ Queue.pop b.deferred;
-        dequeue ppf
-      | Literal s -> Printf.eprintf "still at «%s»\n%!" s; assert false
-      | _ -> assert false
-
-  let to_literal f ppf =
-     let b = Buffer.create 17 in
-     let phy = Spec.buffer b in
-     let backtrack = ppf.backtrack in
-     Printf.eprintf "literal printing: bactrack at %d\n%!" backtrack.column;
-     f { ppf with spec = { ppf.spec with phy} };
-     ppf.backtrack <- backtrack;
-     let s = Buffer.contents b in
-     Printf.eprintf "Printed literal: «%s»\n%!" s;
-     len s, { fmt = Literal s }
-
-
-  let at_top ppf = Deque.is_empty ppf.open_boxes
-
-  let string s ppf =
-    if deferred ppf then begin
-      Printf.eprintf "Defer: «%s»\n%!" s;
-      let l, fmt = to_literal (eager_string s) ppf in
-      let last = Deque.peek_back ppf.open_boxes in
-      last.right <- last.right + l;
-      Queue.add fmt last.deferred;
-      (if len s + ppf.position.column >= ppf.spec.geometry.margin then
-         (
-           Printf.eprintf "Going beyond margin at %d>%d\n%!"
-             (len s + ppf.position.column) ppf.spec.geometry.margin;
-           propagate_break ppf)
-      )
-    end else (
-      Printf.eprintf "Eagerly print «%s»\n%!" s;
-      eager_string s ppf;
-      (*      if at_top ppf then *)
-        (
-          ppf.backtrack <- ppf.position;
-          Printf.eprintf "Bactrack set to %d\n%!" ppf.position.column;
-        )
-    )
-
-  let as_space ppf {fmt} =
-    match fmt with
-    | Break br -> space br.space ppf
-    | Literal s -> eager_string s ppf
-    | _ -> assert false
-
-  let as_newline plus ppf {fmt} =
-    match fmt with
-    | Break br -> newline plus (br.indent + plus) ppf
-    | Literal s -> Printf.eprintf "eager printing (nl) «%s»\n%!" s;
-      eager_string s ppf
-    | _ -> assert false
-
-  let reopen ppf =
-    match !(ppf.after_boxes) with
-    | [] -> ()
-    | a :: q ->
-      if Deque.is_empty ppf.open_boxes then (
-        Deque.push_front ppf.open_boxes a;
-        ppf.after_boxes:= q;
-        a.right <- ppf.position.column;
-        Printf.eprintf "reopening %a box, indent:%d, %a\n%!" pp_box a.kind a.indent
-          pp_pos ppf
-        ;
-        ppf.backtrack <- {
-            Geometry.line = ppf.position.line;
-            column = ppf.position.column; indent = { line = 0; column = a.indent}
-          }
-      )
-
-  let close_box ppf =
-    Printf.eprintf "Open boxes count: %d + %d ⇒ %d\n%!"
-      (Deque.length ppf.open_boxes)
-      (List.length !(ppf.after_boxes))
-      (-1 + Deque.length ppf.open_boxes + List.length !(ppf.after_boxes));
-    Printf.eprintf "close_box, %a\n%!" pp_pos ppf;
-    reopen ppf;
-    Printf.eprintf "close_box, after reopen, %a\n%!" pp_pos ppf;
-    match Deque.take_back ppf.open_boxes with
-    | exception Deque.Empty -> assert false
-    | box ->
-      reopen ppf;
-      Printf.eprintf "close_box, after second reopen, %a\n%!" pp_pos ppf;
-      match Deque.peek_back ppf.open_boxes with
-      | exception Deque.Empty ->
-        Printf.eprintf "Print last box!\n%!";
-          Queue.iter (as_space ppf) box.deferred
+let string s ppf =
+  match ppf.status with
+  | Direct d ->
+    direct_string s d ppf
+  | Suspended sd ->
+    let right = sd.right + len s in
+    let after_block = S.push_back (Lit (Str s)) sd.after_block in
+    debug "suspended printing «%s» %d|%d ⇒ %d > %d ? "
+      s sd.indent sd.right right ppf.logical.geometry.margin;
+    if right > ppf.logical.geometry.margin then begin
+      debug "margin exceeded %d>%d" right ppf.logical.geometry.margin;
+      let direct = { position = sd.blocked_at; indent = sd.indent; kind = sd.box } in
+      let direct = newline sd.break.indent direct ppf in
+      match sd.box with
+      | HV n ->
+        let status = advance_to_next_box
+            { direct with kind = V n } ppf.logical.phy after_block in
+        { ppf with status }
       | b ->
-        let subprinter ppf = match box.kind with
-          | V plus -> Printf.eprintf "V last words\n%!";
-            as_newline (plus + box.indent) ppf
-          | _ -> as_space ppf in
-        let _, fmt =
-          Printf.eprintf "Literal subprinting\n%!";
-          ppf.position <- ppf.backtrack;
-          Printf.eprintf "Backtrack to %a\n" pp_pos ppf;
-          to_literal
-            (fun ppf -> Queue.iter (subprinter ppf) box.deferred)
-            ppf
-        in
-        Queue.add fmt b.deferred;
-        b.right <- b.right + len_lit fmt;
-        dequeue ppf;
-        Printf.eprintf "close_box, end with %a\n%!" pp_pos ppf
-
-
-  let eagerness ppf  =
-    match (Deque.peek_back ppf.open_boxes).eager with
-    | exception Deque.Empty -> Strict
-    | e -> e
-
-  let open_eagerness eagerness (kind:box) =
-    match eagerness, (kind: box) with
-    | Strict, _ -> Strict
-    | (Lazy | Lazy_up_to_break ), _ -> Lazy
-
-  let update_eagerness_on_break ppf =
-    match Deque.peek_back ppf.open_boxes with
-    | exception Deque.Empty -> ()
-    | box ->
-      if box.eager = Strict then
-        match box.kind with
-        | H | V _ -> ()
-        | HoV _ | B _ -> box.eager <- Lazy_up_to_break
-        | HV _ -> box.eager <- Lazy
-
-  let open_box kind ppf =
-    Printf.eprintf "Open boxes count: %d ⇒ %d\n%!"
-      (Deque.length ppf.open_boxes)
-      (1 + Deque.length ppf.open_boxes);
-    let eager = open_eagerness (eagerness ppf) kind in
-    Printf.eprintf "Open box %a position: %d\n%!" pp_box kind ppf.position.column;
-    let box = { kind; deferred = Queue.create (); right=0; eager;
-                indent = ppf.position.column  } in
-    Deque.push_back ppf.open_boxes box;
-    ppf.backtrack <- ppf.position
-
-  let keep_backtrack f ppf =
-    let r = ppf.backtrack in
-    f ppf;
-    ppf.backtrack <- r
-
-
-  let break ~space:s ~indent:i ppf =
-    Printf.eprintf "At break start, %a\n" pp_pos ppf;
-    let need_newline = ppf.position.column + s > ppf.spec.geometry.margin in
-    update_eagerness_on_break ppf;
-    if deferred ppf then begin
-      Printf.eprintf "Defer break <%d %d>\n" s i;
-      Printf.eprintf "Before break, %a\n" pp_pos ppf;
-      let box = Deque.peek_back ppf.open_boxes in
-      Queue.add { fmt = Break {space=s;indent=i} } box.deferred;
-      box.right <- ppf.position.column + s;
-      Printf.eprintf "Box.right: %d\n%!" box.right;
-      ppf.position <- { ppf.position with column = box.right};
-      (if need_newline then
-         propagate_break ppf
-       else if box.eager = Lazy_up_to_break then
-         ( Printf.eprintf "Dequeue up to new break\n%!";
-           if Queue.length box.deferred > 1 then (
-             let f = Queue.pop box.deferred in
-             as_space ppf f; dequeue ppf
-           )));
-       Printf.eprintf "After break, %a\n" pp_pos ppf;
+        advance_to_next_ambiguity direct after_block ppf
     end
     else
-      match Deque.peek_back ppf.open_boxes with
-      | exception Deque.Empty -> space s ppf
-      | {kind=H; _} -> space s ppf
-      | {kind=V n; indent = more; _ } -> newline more (n+i+more) ppf
-      | _ -> assert false
+     ( debug "suspending «%s»" s;
+      { ppf with status = Suspended { sd with after_block; right } }
+     )
 
-let string s ppf = string s ppf ; ppf
-let open_box b ppf = open_box b ppf; ppf
-let break ~space ~indent ppf = break ~space ~indent ppf; ppf
-let close_box ppf = close_box ppf; ppf
+let open_box b ppf =
+  debug "open box %a" pp_box b;
+  match ppf.status with
+  | Direct d ->
+    let status = Direct { d with kind = b; indent = d.position } in
+    let context: open_box_on_the_left list =
+      {indent = d.indent; kind = d.kind } :: ppf.context in
+    { ppf with context; status }
+  | Suspended s ->
+    let status = Suspended
+        { s with after_block = S.push_back (Open_box b) s.after_block } in
+    { ppf with status }
+
+let reactivate position ppf =
+   match ppf.context with
+     | [] ->
+       debug "reopened empty";
+       { position; indent = 0; kind = H }, ([]: _ list)
+     (** empty box *)
+     | {kind;indent} :: q ->
+       debug "Reopened %a ⇒ %d" pp_box kind indent;
+       { position; indent; kind}, q
+
+let rec coalesce ppf sp stream lits =
+  match S.(take back) stream with
+  | Open_box b, stream ->
+    debug "end coalesce, right:%d" sp.right;
+    let status =
+      let box =
+        Box { vertical=is_vertical b; more = box_indent b; content = lits } in
+      Suspended { sp with
+                  after_block  = S.push_back (Lit box) stream; right = sp.right } in
+    { ppf with status }
+  | Lit s, stream -> coalesce ppf sp stream (s :: lits)
+  | Break b, stream -> coalesce ppf sp stream (Break b :: lits)
+  | exception Not_found ->
+    let c =
+      Box {vertical=is_vertical sp.box; more = box_indent sp.box;
+           content = Break sp.break :: lits} in
+    let status =
+      Suspended { sp with after_block  = S.push_back (Lit c) stream } in
+    let direct, (context: _ list) = reactivate sp.blocked_at ppf in
+    let stream = S.push_back (Lit c) S.empty in
+    advance_to_next_ambiguity direct stream { ppf with context; status }
+
+let close_box ppf =
+  debug "close box";
+  match ppf.status with
+  | Direct d ->
+    let direct, context = reactivate d.position ppf in
+    { ppf with status = Direct direct; context }
+  | Suspended sp ->
+    debug "coalesce";
+    coalesce ppf sp sp.after_block []
+
+let break br ppf = match ppf.status with
+  | Direct d -> begin match d.kind with
+      | H -> { ppf with status = Direct (physpace br.space d ppf.logical.phy) }
+      | V more -> { ppf with status = Direct (newline more d ppf) }
+      | HV more | HoV more | B more as b ->
+        let status =
+          Suspended { blocked_at = d.position;
+                      break = br;
+                      box = b;
+                      after_block = S.empty;
+                      indent = d.indent;
+                      right = d.position + br.space;
+                    } in
+        { ppf with status } end
+  | Suspended sd ->
+    let after_block = S.push_back (Break br) sd.after_block  in
+    let direct = { position = sd.blocked_at; indent = sd.indent; kind = sd.box } in
+    debug "waiting for break resolution at %d" direct.position;
+    match sd.box with
+    | HoV _ | B _ when not (secondary_box sd.after_block) ->
+      let direct = physpace sd.break.space direct ppf.logical.phy in
+      advance_to_next_ambiguity direct after_block ppf
+    | _ ->
+      let right = suspended_len after_block direct in
+      debug "break in not hov ⇒ %d" right;
+      { ppf with status = Suspended { sd with after_block; right  } }
