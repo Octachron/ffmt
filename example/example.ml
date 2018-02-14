@@ -37,19 +37,64 @@ let test' world ppf =
 let structural ppf =
   Formatter.eval ppf [%fmt "@[<box 1>12@[<v 1> -5@ -6@ -7@]@ 8@]"] []
 
-let stdout =
-  Formatter.chan
+let buffer b =
+  Formatter.buffer
     ~geometry:Geometry.{margin=20;max_indent=10}
-    Pervasives.stdout
+    b
 
-let exec x = x stdout |> ignore; print_newline ()
+let stdout = Formatter.stdout
+
+let exec (name,x,expected) =
+  let b = Buffer.create 17 in
+  x (buffer b) |> ignore;
+  let res = Buffer.contents b in
+  let status = if res = expected then "[OK]" else "[FAILURE]" in
+  Formatter.eval stdout
+    [%fmt "@[<v 0> Test [%{string name}]: %{string status}@,%{string res}@,@]"]
+    [] |> ignore
 
 let full_break ppf = Formatter.eval ppf
     [%fmt "@{<hov 2>x@ @{<hov 2>y@\nz@}@ w@\nt@}"] []
 
 let () =
   List.iter exec [
-    test "world";
-    test' "κοσμοσ";
-    structural;
-    full_break ]
+    "Handwritten", test "world",
+{|123:Hello world N°1?
+     How is your day N°1?
+     π=3.1415926535 or 3.1415926535!
+ a list: 1
+           23
+           4567
+           89ABCDE
+           123456
+ abcdefNCKLQ
+       LAKCM
+       ABCDEF
+       CNKSS
+       XLAXMA|}
+;
+"Ppx", test' "κοσμοσ",
+{|123: 今日は κοσμοσ N°1!
+      How is your day N°1?
+      π=3.1415926535 or 3.1415926535!
+ a list: 1
+           23
+           4567
+           89ABCDE
+           123456
+ abcdefNCKLQ
+       LAKCM
+       ABCDEF
+       CNKSS
+       XLAXMA|};
+"Structural box", structural,
+{|12 -5
+   -6
+   -7
+ 8|};
+"Full break", full_break,
+{|x
+  y
+    z w
+  t|}
+ ]
