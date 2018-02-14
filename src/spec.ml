@@ -11,31 +11,21 @@ type phy =
     break: unit -> unit;
   }
 
-module type tag_semantic = sig
-  type data
-  type printer
-  val init: unit -> data
-  val box: data -> 'any tag -> 'any -> box option
-  val open_printer: data -> 'any tag -> 'any -> data * printer
-  val close_printer: data -> data * printer
-end
+type ('data,'printer) tag_semantic =  {
+  box: 'any. 'data -> 'any tag -> 'any -> box option;
+  open_printer: 'any. 'data -> 'any tag -> 'any -> 'data * 'printer captured;
+  close_printer: 'data -> 'data * 'printer captured;
+  data :'data
+}
 
-type ('acc,'printer) tagsem =
-  (module tag_semantic with type data = 'acc and type printer = 'printer captured )
-
-type 'p semantic_with_data =
-    S: { semantic: ('acc,'p) tagsem ; data: 'acc }
-    -> 'p semantic_with_data
-
-let init (type a b) ((module Sem) as semantic : (a,b) tagsem) =
-  S { semantic ; data = Sem.init () }
-
+type 'printer tagsem = T: ('data,'printer) tag_semantic ->
+  'printer tagsem [@@unboxed]
 
 type open_tag = Open_tag: {tag:'a tag; with_box:bool} -> open_tag
 type 'a t = {
   phy: phy;
   geometry: Geometry.t;
-  tag_semantic: 'a semantic_with_data;
+  tag_semantic: 'a tagsem;
   open_tags: open_tag list;
 }
 
@@ -44,6 +34,7 @@ type 'a spec = 'a t
 
 let full s = { start = 0; stop=String.length s }
 let all s = { content=s; range=full s }
+
 
 let buffer b =
   let string {content;range} =
