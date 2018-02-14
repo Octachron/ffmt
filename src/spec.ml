@@ -12,6 +12,7 @@ type phy =
   }
 
 type ('data,'printer) tag_semantic =  {
+  mine: 'any. 'any tag -> bool;
   box: 'any. 'data -> 'any tag -> 'any -> box option;
   open_printer: 'any. 'data -> 'any tag -> 'any -> 'data * 'printer captured;
   close_printer: 'data -> 'data * 'printer captured;
@@ -21,11 +22,21 @@ type ('data,'printer) tag_semantic =  {
 type 'printer tagsem = T: ('data,'printer) tag_semantic ->
   'printer tagsem [@@unboxed]
 
+let rec find_sem:type any p.
+   p tagsem list -> any tag -> p tagsem list -> (p tagsem * p tagsem list) option =
+  fun rest tag -> function
+  | [] -> None
+  | T x :: q ->
+    if x.mine tag then Some (T x, List.rev_append rest q)
+    else find_sem (T x :: rest) tag q
+
+let find_sem x = find_sem [] x
+
 type open_tag = Open_tag: {tag:'a tag; with_box:bool} -> open_tag
 type 'a t = {
   phy: phy;
   geometry: Geometry.t;
-  tag_semantic: 'a tagsem;
+  tag_semantic: 'a tagsem list;
   open_tags: open_tag list;
 }
 
