@@ -2,6 +2,9 @@ open Stringi
 open Combinators
 
 let test s ppf =
+  let open Handwritten in
+  let b = Format.Break { space=1; indent = 0 } in
+  let b0: _ Format.tag * _ = Format.B, 0 in
   let v = v 2 and hv = hv 0 in
   Formatter.eval ppf
     [ !<(box 1); l"123:";
