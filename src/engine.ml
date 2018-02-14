@@ -242,7 +242,7 @@ let advance_to_next_ambiguity direct stream ppf =
   debug "Advance up to new break, start at %d" direct.position;
   advance_to_next_ambiguity direct stream ppf
 
-let actualize_break sd right ppf after =
+let actualize_break sd right ppf =
   debug "margin exceeded %d>%d" right ppf.logical.geometry.margin;
   let direct =
     { position = sd.blocked_at; indent = sd.indent;
@@ -251,26 +251,26 @@ let actualize_break sd right ppf after =
   match sd.box with
   | HV n ->
     let status = advance_to_next_box
-        { direct with kind = V n } ppf.logical.phy after in
-    { ppf with status }
+        { direct with kind = V n } ppf.logical.phy sd.after_block in
+   { ppf with status }
   | b ->
-    advance_to_next_ambiguity direct after ppf
+    ppf |> advance_to_next_ambiguity direct sd.after_block
 
 
-let string s ppf =
+let rec string s ppf =
   match ppf.status with
   | Direct d ->
     direct_string s d ppf
   | Suspended sd ->
     let right = sd.right + len s in
-    let after_block = S.push_back (Lit (Str s)) sd.after_block in
     debug "suspended printing «%s» %d|%d ⇒ %d > %d ? "
       s sd.indent sd.right right ppf.logical.geometry.margin;
     if right > ppf.logical.geometry.margin then
-      actualize_break sd right ppf after_block
+      ppf |> actualize_break sd right |> string s
     else
-     ( debug "suspending «%s»" s;
-      { ppf with status = Suspended { sd with after_block; right } }
+      ( debug "suspending «%s»" s;
+        let after_block = S.push_back (Lit (Str s)) sd.after_block in
+        { ppf with status = Suspended { sd with after_block; right } }
      )
 
 let open_box b ppf =
@@ -333,7 +333,7 @@ let eager_indent: box -> _ = function
   | B _ -> true
   | _ -> false
 
-let break br ppf =
+let rec break br ppf =
   match ppf.status with
   | Direct d -> begin match d.kind with
       | H -> { ppf with status = Direct (physpace br.space d ppf.logical.phy) }
@@ -367,7 +367,7 @@ let break br ppf =
     if right > ppf.logical.geometry.margin
        || (eager_indent b && sd.indent + br.indent + box_indent b < sd.last_indent)
     then
-      actualize_break sd right ppf after_block
+      ppf |> actualize_break sd right |> break br
     else match sd.box with
     | HoV _ | B _ when not (secondary_box sd.after_block) ->
       let direct = physpace sd.break.space direct ppf.logical.phy in
@@ -393,5 +393,4 @@ let rec full_break br ppf =
       ppf |> advance_to_next_ambiguity direct sd.after_block |> full_break br
     | _ ->
       debug "breaking with a full break at %d" direct.position;
-      let next = actualize_break sd right ppf sd.after_block in
-      full_break br next
+      ppf |> actualize_break sd right |> full_break br
