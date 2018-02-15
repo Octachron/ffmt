@@ -3,7 +3,8 @@ module E = Engine
 
 let with_sem f = fun ?(geometry=Geometry.default) ?(tags=[Spec.T Semantics.box]) x ->
   let logical = { Spec.phy = f x; tag_semantic=tags; geometry; open_tags = [] } in
-  { E.logical; status = Direct {position=0;indent=0; kind=H; last_indent=0 };
+  { E.logical; status = Direct;
+    position= {current=0;indent=0; kind=H; last_indent=0 };
     context = [] }
 
 let chan ?geometry = with_sem Spec.chan ?geometry
