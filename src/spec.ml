@@ -14,6 +14,7 @@ type phy =
 type ('data,'printer) tag_semantic =  {
   mine: 'any. 'any tag -> bool;
   box: 'any. 'data -> 'any tag -> 'any -> box option;
+  break: 'any. 'data -> 'any tag -> 'any -> break option;
   open_printer: 'any. 'data -> 'any tag -> 'any -> 'data * 'printer captured;
   close_printer: 'data -> 'data * 'printer captured;
   data :'data

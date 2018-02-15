@@ -23,6 +23,7 @@ type _ tag = ..
 
 exception Unknown_tag
 type box = H  | V of int | HoV of int | HV of int | B of int
+type break = Break of {indent:int; space:int} | Full_break of int
 
 type _ tag +=
   | B: int tag
@@ -30,6 +31,8 @@ type _ tag +=
   | V: int tag
   | HoV: int tag
   | HV: int tag
+  | Break: (int * int) tag
+  | Full_break: int tag
 
 
 type (_,_,_,_) token =
@@ -42,9 +45,8 @@ type (_,_,_,_) token =
     ('list, 'close,'pos * 'pos,'fmt) token
   | Close_tag: _ tag -> ('list, 'close,'pos * 'pos,'fmt) token
   | Close_any_tag: ('list, 'close,'pos * 'pos,'fmt) token
-  | Break: { indent: int; space:int } -> ('list, 'close,'pos * 'pos,'fmt) token
-  | Full_break: int -> ('list, 'close,'pos * 'pos,'fmt) token
-
+  | Point_tag: ('data tag * 'data) ->
+    ('list, 'close,'pos * 'pos,'fmt) token
 
 type (_,_,_,_) format =
   | []: ('any,'result, 'right,'fmt) format

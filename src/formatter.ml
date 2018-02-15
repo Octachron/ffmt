@@ -65,12 +65,27 @@ let rec eval:
         | Spec.Open_tag {tag; with_box} :: tags ->
           close_tag with_box tag tags q iargs ppf
       end
-    | Break {space; indent} :: q ->
-      ppf |> E.break {space;indent} |> eval q iargs
-    | Full_break b :: q ->
-      ppf |> E.full_break b |> eval q iargs
-
-
+    | Point_tag (tag, tdata) :: q ->
+      let ppf =
+      begin match Spec.find_sem tag ppf.logical.tag_semantic with
+        | None -> ppf
+        | Some (Spec.T sem,rest) ->
+          let data, p = sem.open_printer sem.data tag tdata in
+          let ppf = p ppf in
+          let ppf = begin match sem.break data tag tdata with
+            | None -> ppf
+            | Some Break {space; indent} ->
+              E.break {space;indent} ppf
+            | Some Full_break b ->
+              E.full_break b ppf
+          end in
+          let data, p = sem.close_printer data  in
+          let ppf = p ppf in
+          let logical =
+            { ppf.logical with tag_semantic = T { sem with data } :: rest } in
+          { ppf with logical }
+      end in
+      eval q iargs ppf
 
 and close_tag: type any free right.
   bool -> any Format.tag -> Spec.open_tag list
