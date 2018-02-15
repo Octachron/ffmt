@@ -1,6 +1,11 @@
-type t = { margin: int; max_indent:int }
+type t = {
+  box_margin:int;
+  max_indent:int;
+  margin: int;
+}
 type geometry = t
-let default = { margin = 78; max_indent=68 }
+
+let default = { margin = 78; box_margin=50; max_indent=68 }
 
 
 module Indentation = struct
