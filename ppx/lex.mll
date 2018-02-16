@@ -23,18 +23,20 @@ let any = [^ '%' '@']
 let num = ['0'-'9']+
 let implicit = ['a' 'b' 'B' 'd' 'f' 's' 't' ]
 let pos = "$" num
+let space = " "+
 
 rule main = parse
  | "%{" { Buffer.clear bfrag; frag 0 lexbuf }
  | any+ as t { TEXT t }
  | "%%" { TEXT "%" }
  | "%" (implicit as i) { IMPLICIT_FRAG (char i) }
- | "%" (implicit as i) "$" (num as n) { POS_IMPLICIT_FRAG (char i, int_of_string n) }
+ | "%" (implicit as i) "$" (num as n)
+ { POS_IMPLICIT_FRAG (char i, int_of_string n) }
  | "@\n" { FULL_BREAK 0 }
  | "@\n<"(num as n)">" { FULL_BREAK (int_of_string n) }
  | "@," { BREAK{space=0; indent=0} }
  | "@ " { BREAK{space=1; indent=0} }
- | "@;<"(num as space) (num as indent) ">"
+ | "@;<"(num as space) space (num as indent) ">"
  { BREAK{space=int_of_string space; indent = int_of_string indent } }
  | "@@" { TEXT "@" }
  | "@[" | "@{" { open_box lexbuf }

@@ -52,7 +52,7 @@ let explain got expected ppf =
     while  got.[!i] = expected.[!i] do incr i done;
     let sub s = String.sub s (max 0 (!i-10)) (min (!i + 10) (len- !i)) in
     Formatter.eval ppf
-      [%fmt "@{<v 0>all:%s@,got %d$3     :%s@,expected %d$3:%s@}"]
+      [%fmt "@{<v 0>all:@,%s@,got %d$3     :@,%s@,expected %d$3:@,%s@}"]
           [got; sub got; sub expected;!i]
   else ppf
 
@@ -85,6 +85,10 @@ let rec nested indent n ppf =
       [%fmt "@[<v indent>level %d@,[@,%{nested indent (n-1)}\
              @,%{nested indent(n-1)}@,]@]"]
       [n]
+
+let break_all ppf =
+  Formatter.eval ppf
+    [%fmt "@[<hv 0>x@ y@ z@ w@;<1000 0>t@]"] []
 
 let () =
   List.iter exec [
@@ -164,5 +168,11 @@ level 0
        item
        ]
 ]
-       ]|}
+       ]|};
+"Long break", break_all,
+{|x
+y
+z
+w
+t|}
 ]
