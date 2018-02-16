@@ -1,3 +1,4 @@
+(** Combinators for building printers *)
 
 open Format
 module E = Engine
@@ -31,7 +32,7 @@ let v n = V, n
 let hv n = HV, n
 let hov n = HoV, n
 
-let break ~space ~indent = E.break {space;indent}
+let break ~space ~indent = Formatter.break {space;indent}
 let space = break ~space:1 ~indent:0
 
 let l x = Literal x
