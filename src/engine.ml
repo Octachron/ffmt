@@ -15,14 +15,13 @@ let pp_box (ppf:out_channel): Format.box -> unit = function
 open Format
 
 type break = { space: int; indent: int }
-
-type blocked_box = S_HV of int | S_HoV of int | S_B of int
-
 type open_box_on_the_left = {indent:int;kind:box}
 
 type resolved_lit =
-    Str of string | Break of break
-  | Box of {vertical:bool; more:int; content:resolved_lit list}
+  | Str of string
+  | Space of int
+  | Newline of int
+  | Box of resolved_lit list
 type suspended_lit =
     Break of break | Lit of resolved_lit | Open_box of box
 
@@ -89,14 +88,6 @@ type status =
   (**We are blocked at an ambiguous break, waiting for the decision on
      how to interpret it *)
 
-let last_box current str =
-  let rec search mx =
-    match S.M.find_opt mx str with
-    | Some Open_box b -> b
-    | Some _ -> search (mx - 1)
-    | None -> current in
-  search (S.max str)
-
 let secondary_box str =
   S.M.exists (fun _ -> function Open_box _ -> true | _ -> false) str
 
@@ -160,17 +151,15 @@ let direct_string phy context d s  =
   let status = Direct in
   { context; status; position }
 
-let rec suspended_lit_len vert indent current: _ list -> _  = function
+let rec suspended_lit_len indent current: _ list -> _  = function
   | Str s :: q ->
     debug "str %d ⇒ %d" current (current + len s);
-    suspended_lit_len vert indent (current + len s) q
-  | Break br :: q->
-    if vert then
-      suspended_lit_len vert (indent + br.indent) (indent + br.indent) q
-    else suspended_lit_len vert indent (current + br.space) q
+    suspended_lit_len indent (current + len s) q
+  | Newline more :: q->
+      suspended_lit_len (indent + more) (indent + more) q
+  | Space sp :: q-> suspended_lit_len indent (current + sp) q
   | Box box :: q ->
-    suspended_lit_len vert (indent + box.more)
-      (suspended_lit_len box.vertical current current box.content) q
+    suspended_lit_len indent (suspended_lit_len current current box) q
   | [] -> debug "lit: ⇒ %d" current; current
 
 let is_vertical (x: box) = match x with V _ -> true | _ -> false
@@ -185,9 +174,8 @@ let suspended_len_tok direct = function
     end
   | Open_box v -> { direct with indent = direct.current; kind = v }
   | Lit l ->
-    let vertical = is_vertical direct.kind  in
     { direct with current =
-                    suspended_lit_len vertical direct.indent direct.current [l]}
+                    suspended_lit_len direct.indent direct.current [l]}
 
 let suspended_len stream direct =
   let all =
@@ -196,24 +184,16 @@ let suspended_len stream direct =
   debug "reevaluted size: %d ⇒ %d "direct.current all.current;
   all.current
 
-let to_sbox: Format.box -> _ = function
-  | HV n -> S_HV n
-  | HoV n -> S_HoV n
-  | B n -> S_B n
-  | H | V _ -> raise (Invalid_argument "H or V box cannot be suspended")
-
 let max_indent dev = dev.geom.max_indent
 
 let commit_resolved_literal max_indent phy (d:position) =
   let rec elt phy d =  function
     | Str s -> phystring s d phy
-    | Break br ->
-      if is_vertical d.kind then phyline max_indent br.indent d phy
-      else physpace phy br.space d
+    | Newline more -> phyline max_indent more d phy
+    | Space sp -> physpace phy sp d
     | Box b ->
-      let kind: box = if b.vertical then V b.more else d.kind in
-      let inside =
-        List.fold_left (elt phy) {d with indent = d.current; kind} b.content in
+      let inside = List.fold_left (elt phy)
+          {d with indent = d.current; kind = B 0 } b in
       { d with current = inside.current } in
   List.fold_left (elt phy) d
 
@@ -303,27 +283,46 @@ let reactivate position (context: open_box_on_the_left list) =
        debug "Reopened %a ⇒ %d" pp_box kind indent;
        { position with indent; kind }, q
 
-let rec coalesce dev context position sp stream lits =
+
+let translate_break (b:break) box =
+  if is_vertical box then Newline (b.indent + box_indent box) else Space b.space
+
+let last_box (context: open_box_on_the_left list) str =
+  let rec search mx =
+    match S.M.find_opt mx str with
+    | Some Open_box b -> b
+    | Some _ -> search (mx - 1)
+    | None -> match context with
+      | [] -> H
+      | a :: _ -> a.kind in
+  search (S.max str)
+
+
+let rec resolve_box bx sp stream lits =
   match S.(take back) stream with
   | Open_box b, stream ->
     debug "end coalesce, right:%d" sp.right;
-    let status =
-      let box =
-        Box { vertical=is_vertical b; more = box_indent b; content = lits } in
-      let after_block = S.push_back (Lit box) stream in
-      Suspended { sp with after_block; right = sp.right } in
-    { status; context; position }
-  | Lit s, stream -> coalesce dev context position sp stream (s :: lits)
-  | Break b, stream -> coalesce dev context position sp stream (Break b :: lits)
+    Box lits, Some stream
+  | Lit s, stream -> resolve_box bx sp stream (s :: lits)
+  | Break b, stream ->
+    let lit = translate_break b bx in
+    resolve_box bx sp stream (lit :: lits)
   | exception Not_found ->
-    let c =
-      Box {vertical=is_vertical position.kind;
-           more = box_indent position.kind;
-           content = Break sp.break :: lits} in
-    let position, (context: _ list) =
-      reactivate position context in
-    let stream = S.push_back (Lit c) S.empty in
-    advance_to_next_ambiguity dev context position stream
+      let lit = translate_break sp.break bx in
+      Box (lit :: lits), None
+
+let coalesce dev context position sp =
+  let bx = last_box context sp.after_block in
+  let lit, rest = resolve_box bx sp sp.after_block [] in
+  match rest with
+  | None ->
+    let position, context = reactivate position context in
+    let position =
+      commit_resolved_literal (max_indent dev) dev.phy position [lit] in
+    { position; context; status = Direct }
+  | Some rest ->
+    let after_block = S.push_back (Lit lit) rest  in
+    { position; context; status = Suspended { sp with after_block } }
 
 let close_box dev ppf =
   match ppf.status with
@@ -333,7 +332,7 @@ let close_box dev ppf =
     { ppf with position; context }
   | Suspended sp ->
     debug "coalesce box %a" pp_box ppf.position.kind;
-    coalesce dev ppf.context ppf.position sp sp.after_block []
+    coalesce dev ppf.context ppf.position sp
 
 let eager_indent: box -> _ = function
   | B _ -> true
