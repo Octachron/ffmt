@@ -4,24 +4,24 @@ open Format
 module E = Engine
 
 module Handwritten = struct
-  let keep f x = f x, x
-  let (!) x = Captured x
+  let ($) n x = Captured (n,x)
+  let keep f = Size.Z $ f
   let (!$) x = (keep @@ fun iargs -> x)
 
   let (%:) n typ =  (keep @@ fun iargs -> typ iargs.%(n) )
   let (%:%) n p = ( keep @@ fun iargs -> iargs.%(p) iargs.%(n))
 
-  let take f x = let elt, x = current x in f elt, x
-
-  let skip f x = let _, x =current x in f x
+  let take f = Size.(S Z), fun x -> let elt, x = current x in f elt
+  let (!) (k,f) = k $ f
+  let skip (k,f) =  Size.(S k), fun x -> let _, x =current x in f x
 
   let (!<) (tag,data): _ token = Open_tag (tag,data)
 
   let (!>) (tag,_) = Close_tag tag
 
-  let (!%) x = (take x)
-  let (!%%) x = (skip @@ take x )
-  let (!%%%) x = (skip @@ skip @@ take x)
+  let (!%) x = !(take x)
+  let (!%%) x = !(skip @@ take x )
+  let (!%%%) x = !(skip @@ skip @@ take x)
 end
 
 

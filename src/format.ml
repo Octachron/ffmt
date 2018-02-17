@@ -1,3 +1,4 @@
+(** Core definition of format string *)
 
 type 'fmt captured = 'fmt -> 'fmt
 type ('a,'fmt) printer = 'a -> 'fmt captured
@@ -6,18 +7,30 @@ type (_,_) index =
   | Z: ('elt, 'elt -> _ ) index
   | S: ('elt, 'list) index -> ('elt, 'any -> 'list) index
 
-type (_,_) args =
-  | []: ('result,'result) args
-  | (::): 'a * ('list,'result) args -> ('a -> 'list, 'result) args
 
-type ('all,'right,'result) iargs =
-  { all: ('all,'result) args; right: ('right,'result) args }
+
+module Size = struct
+  type (_,_) t =
+    | Z : ('a, 'a) t
+    | S: ('list,'last) t -> ( 'one_more -> 'list, 'last) t
+end
+
+type ('a,'b) eq = Refl: ('a,'a) eq
+type empty = (int,float) eq
+
+
+type _ args =
+  | []: empty args
+  | (::): 'a * 'list args -> ('a -> 'list) args
+
+type ('all,'right) iargs =
+  { all: 'all args; right: 'right args }
 
 let make x = { all = x; right = x }
-let current (type all elt right stop) (x: (all,elt -> right,stop) iargs) =
+
+let current (type all elt right) (x: (all,elt -> right) iargs) =
   match x.right with
   | a :: q -> a, { x with right = q}
-  | [] -> raise Not_found
 
 type _ tag = ..
 
@@ -35,43 +48,55 @@ type _ tag +=
   | Full_break: int tag
 
 
-type (_,_,_,_) token =
-  | Literal: string -> ('list, 'close,'pos * 'pos,'fmt) token
+type (_,_,_) token =
+  | Literal: string -> ('list, 'pos * 'pos,'fmt) token
   | Captured:
-      ( ('list,'right,'close) iargs ->
-        'fmt captured * ('list,'right2,'close) iargs )
-      -> ('list,'close, 'right * 'right2 ,'fmt) token
+      ('right,'right2) Size.t *
+      ( ('list,'right) iargs -> 'fmt captured )
+      -> ('list,'right * 'right2 ,'fmt) token
   | Open_tag: ('data tag * 'data) ->
-    ('list, 'close,'pos * 'pos,'fmt) token
-  | Close_tag: _ tag -> ('list, 'close,'pos * 'pos,'fmt) token
-  | Close_any_tag: ('list, 'close,'pos * 'pos,'fmt) token
+    ('list, 'pos * 'pos,'fmt) token
+  | Close_tag: _ tag -> ('list,'pos * 'pos,'fmt) token
+  | Close_any_tag: ('list,'pos * 'pos,'fmt) token
   | Point_tag: ('data tag * 'data) ->
-    ('list, 'close,'pos * 'pos,'fmt) token
+    ('list, 'pos * 'pos,'fmt) token
 
-type (_,_,_,_) format =
-  | []: ('any,'result, 'right,'fmt) format
+type (_,_,_) format =
+  | []: ('any, 'right * 'right,'fmt) format
   | (::):
-      ('list,'result, 'right * 'right2,'fmt) token
-      * ('list,'result,'right2,'fmt) format ->
-      ('list,'result,'right,'fmt) format
+      ('list, 'right * 'right2,'fmt) token
+      * ('list, 'b * 'right2,'fmt) format ->
+      ('list, 'b * 'right,'fmt) format
 
 
 
 
-let rec nth: type elt a right r. (elt,a) index -> (a,r) args -> elt = fun n  args ->
+let rec nth: type elt a right. (elt,a) index -> a args -> elt =
+  fun n  args ->
   match n, args with
   | Z , a :: _ -> a
   | S n, _ :: q -> nth n q
-  | _, [] -> raise Not_found
 
 let (.%()) iargs n = nth n iargs.all
 let nth x y = x.%(y)
 
-(*
-let rec (^^): type r right free fmt.
-  (free,r,right,fmt) format -> (free,r,right,fmt) format ->
-  (free,r,right,fmt) format =
+
+let rec take: type free fmt s e.  (s, e) Size.t -> (free,s) iargs ->
+  (free,e) iargs =
+  fun n iargs -> match n, iargs.right with
+    | Size.Z, _ -> iargs
+    | Size.S k, _ :: right -> take k { iargs with right }
+
+let rec (^^): type left right b free fmt.
+  (free,right * left,fmt) format -> (*(left,right) Size.t ->*)
+  (free,b * right,fmt) format ->
+  (free, b * left,fmt) format =
+  let open Size in
   fun l r -> match l with
     | [] -> r
-    | a :: q -> a :: (q ^^ r)
- *)
+    | Captured(k,f) :: q -> Captured(k,f) :: (q ^^ r)
+    | Close_tag _ as t :: q -> t :: (q ^^ r)
+    | Close_any_tag as t :: q -> t :: (q ^^ r)
+    | Point_tag _ as t :: q -> t :: (q ^^ r)
+    | Open_tag _ as t :: q -> t :: (q ^^ r)
+    | Literal _ as t :: q -> t :: (q ^^ r)

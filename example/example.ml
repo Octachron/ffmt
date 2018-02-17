@@ -9,11 +9,11 @@ let test s ppf =
   let v = v 2 and hv = hv 0 in
   Formatter.eval ppf
     [ !<(box 1); l"123:";
-      !<(box 1); l"Hello"; l" "; ! !$(string s); l" N°"; !(Z %: int); l"?";
+      !<(box 1); l"Hello"; l" "; !$(string s); l" N°"; Z %: int; l"?";
       b;
-      !(S Z %: string ); ! !%int; l"?";
+      S Z %: string; !%int; l"?";
       fb 0;
-      l"π="; ! ((S (S (S Z))) %:% S (S Z)); l" or "; ! !%%%float ; l"!";
+      l"π="; (S (S (S Z))) %:% S (S Z); l" or "; !%%%float ; l"!";
       !> b0;
       b; l "a list:";b; (*l"123";*)
       (*!<v; l "123"; !>V; l " out";*)
@@ -85,6 +85,12 @@ let rec nested indent n ppf =
       [%fmt "@[<v indent>level %d@,[@,%{nested indent (n-1)}\
              @,%{nested indent(n-1)}@,]@]"]
       [n]
+
+let fmt = [%fmt "%s$4 %d %d"]
+let fmt2 = fmt
+
+let fmt3 ppf = Formatter.eval ppf
+    Format.(fmt ^^ fmt2) [1;2;3;4;"⇒"]
 
 let break_all ppf =
   Formatter.eval ppf
@@ -174,5 +180,7 @@ level 0
 y
 z
 w
-t|}
+t|};
+"Format concatenation", fmt3,
+{|⇒ 1 2⇒ 3 4|}
 ]

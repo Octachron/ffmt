@@ -41,15 +41,18 @@ type exn += Mismatched_close: {expected:'any Format.tag; got:'other Format.tag}
 
 
 let rec eval:
-  type free right.
-  (free,t,right,t) Format.format
-  -> (free,right,t) Format.iargs
+  type free b right.
+  (free,b * right,t) Format.format
+  -> (free,right) Format.iargs
   -> t -> t  =
   let open Format in
   fun fmt iargs ppf -> match fmt with
     | [] -> ppf
     | Literal s :: q  -> eval q iargs (string s ppf)
-    | Captured f:: q -> let g, iargs = f iargs in eval q iargs (g ppf)
+    | Captured (k, f):: q ->
+      let ppf = f iargs ppf in
+      let iargs = Format.take k iargs in
+      eval q iargs ppf
     | Open_tag (tag,data) :: q ->
       begin match Spec.find_sem tag ppf.tag_semantic with
         | None -> ppf
@@ -98,10 +101,10 @@ let rec eval:
       end in
       eval q iargs ppf
 
-and close_tag: type any free right.
+and close_tag: type any free b right.
   bool -> any Format.tag -> Spec.open_tag list
-  -> (free,t,right,t) Format.format
-  -> (free,right,t) Format.iargs
+  -> (free,b * right,t) Format.format
+  -> (free,right) Format.iargs
   -> t -> t  = fun with_box tag open_tags q iargs ppf ->
   let open Format in
   match Spec.find_sem tag ppf.tag_semantic with

@@ -10,7 +10,8 @@ let (@?) lex loc =
 
 let stream lex loc s =
   let lexbuf = Lexing.from_string s @? loc in
-  let loc loc_start loc_end= Location.{ loc_start; loc_end; loc_ghost = true } in
+  let loc loc_start loc_end=
+    Location.{ loc_start; loc_end; loc_ghost = true } in
   fun () -> lex lexbuf,
             loc lexbuf.lex_start_p lexbuf.lex_curr_p
 
@@ -18,8 +19,6 @@ let stop = [%expr [] ]
 let (@::) x y = [%expr [%e x] :: [%e y] ]
 
 let str loc x = Ast_builder.Default.estring loc x
-
-
 
 
 let subparser loc x =
@@ -37,6 +36,12 @@ let rec nat n =
   if n <= 0 then [%expr Z]
   else [%expr S [%e nat (n-1)]]
 
+let nat' n=
+  let rec close n = if n = 0 then [] else ")" :: close (n-1) in
+  let rec nat n start =
+    if n = 0 then "Z" :: start else "S (" :: nat (n-1) start in
+  String.concat "" @@ "Size.(" :: nat n (close@@n+1)
+
 module B = Ast_builder.Default
 let escaped x =("%"^x^"%")
 
@@ -44,12 +49,15 @@ let ge x = B.evar (escaped x)
 let gp x = B.pvar (escaped x)
 
 
-let contextualize n s =
+let contextualize iarg n s =
   let rec args last k =
-    if k = last then ["right; _ } as iargs)"]
+    if k = last then
+      if iarg then ["_; _ } as iargs)"] else ["_;_}"]
     else ["x"; string_of_int k; "::"] @ args last (k+1) in
   String.concat "" @@
-    "fun ({ right = " :: args n 0 @ "->(" :: s @ ["), iargs"]
+  "Captured(" :: nat' n :: ", "
+  ::"fun " :: (if iarg then "(" else "")
+  :: "{ right = " :: args n 0 @ "->" :: s @ [")"]
 
 let rec snat = function
   | 0 -> "Z"
@@ -58,16 +66,16 @@ let rec snat = function
 
 let frag loc s=
   let s = stream Lex.subfrags loc s in
-  let rec rewrite n ls = let tok, loc = s () in
+  let rec rewrite with_iarg n ls = let tok, loc = s () in
     match tok with
-    | Lex.EOF -> contextualize n @@ List.rev @@ ls
-    | IMPLICIT_POS_ARG pos -> rewrite n @@ "))" :: (snat pos) :: "(nth iargs (" :: ls
+    | Lex.EOF -> contextualize with_iarg n @@ List.rev @@ ls
+    | IMPLICIT_POS_ARG pos ->
+      rewrite true n @@ "))" :: (snat pos) :: "(nth iargs (" :: ls
     | IMPLICIT_ARG skip ->
-      Format.eprintf "Skip %d ⇒ %d@." skip n;
-      rewrite (n+skip+1) @@ ("x" ^ string_of_int(n + skip)) :: ls
-    | TEXT t -> rewrite n @@ t :: ls
-    | _ -> rewrite n ls in
-  subparser loc @@ rewrite 0 []
+      rewrite with_iarg (n+skip+1) @@ ("x" ^ string_of_int(n + skip)) :: ls
+    | TEXT t -> rewrite with_iarg n @@ t :: ls
+    | _ -> rewrite with_iarg n ls in
+  subparser loc @@ rewrite false 0 []
 
 let rec ast stream =
   let tok, loc = stream () in
@@ -77,7 +85,7 @@ let rec ast stream =
     [%expr Literal [%e str loc t] ] @:: ast stream
   | FRAG s ->
     let captured = frag loc s in
-    [%expr Captured [%e captured]] @:: ast stream
+    captured @:: ast stream
   | OPEN_IMPLICIT_TAG ->
     [%expr Open_tag(B,1)] @:: ast stream
   | OPEN_TAG s ->
@@ -90,28 +98,27 @@ let rec ast stream =
     and indent = Ast_builder.Default.eint loc indent in
     [%expr Point_tag(Break, ([%e space], [%e indent])) ] @:: ast stream
   | IMPLICIT_FRAG "a" ->
-    [%expr Captured (fun ({ right = a :: b :: right; _ } as iargs) ->
-        a b, { iargs with right }
-      )
-    ] @:: ast stream
+    [%expr Captured ( Size.(S (S Z)),
+                      fun { right = f :: x :: _; _ } -> f x ) ]
+    @:: ast stream
   | IMPLICIT_FRAG "t" ->
-    [%expr Captured (fun ({ right = a :: right; _ } as iargs) ->
-        a, { iargs with right })] @:: ast stream
+    [%expr Captured (Size.(S Z), fun { right = a :: _; _ } -> a)]
+    @:: ast stream
   | IMPLICIT_FRAG n ->
-    [%expr Captured (fun ({ right = a :: right; _ } as iargs) ->
-        [%e implicit n] a, { iargs with right }
-      )
-    ] @:: ast stream
+    [%expr Captured (Size.(S Z),
+                     fun { right = a :: _; _ } -> [%e implicit n] a)]
+    @:: ast stream
 
   | POS_IMPLICIT_FRAG (n,pos) ->
     let pargs = gp "iargs" loc in
     let eargs = ge "iargs" loc in
     let arg = [%expr nth [%e eargs] [%e nat pos]] in
-    [%expr Captured (fun [%p pargs] ->
-        [%e implicit n] [%e arg], [%e eargs]
+    [%expr Captured (Size.Z, fun [%p pargs] ->
+        [%e implicit n] [%e arg]
       )
     ] @:: ast stream
-  | FULL_BREAK n -> [%expr Point_tag(Full_break, [%e B.eint loc n])] @:: ast stream
+  | FULL_BREAK n ->
+    [%expr Point_tag(Full_break, [%e B.eint loc n])] @:: ast stream
   | _ -> assert false
 
 
