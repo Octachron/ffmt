@@ -11,7 +11,7 @@ type t = {
   metadata: E.t
 }
 
-let with_sem f ?(geometry=Geometry.default) ?(tags=[Spec.T Semantics.box]) x =
+let with_sem f ?(geometry=Geometry.default) ?(tags=[Semantics.box]) x =
   { phy = f x; tag_semantic=tags; geometry; open_tags = []; metadata = E.start }
 
 let chan ?geometry = with_sem Spec.chan ?geometry

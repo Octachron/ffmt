@@ -21,22 +21,22 @@ let box =
     | F.B -> true | F.V -> true | F.HV -> true | F.HoV -> true | F.H -> true
     | F.Break -> true | F.Full_break -> true
     | _ -> false in
-  {
+  Spec.T {
   Spec.data = ();
   mine;
-  box= (fun (type a) () (tag: a F.tag)  (i:a): F.box option -> Some(match tag with
-    | F.B -> B i
-    | F.H -> H
-    | F.V -> V i
-    | F.HV -> HV i
-    | F.HoV -> HoV i
-    | _ -> raise F.Unknown_tag));
-  break = (fun (type a) () (tag: a F.tag) (i:a): F.break option -> Some(
+  box= (fun (type a) () (tag: a F.tag)  (i:a): F.box option -> match tag with
+    | F.B -> Some (B i)
+    | F.H -> Some H
+    | F.V -> Some (V i)
+    | F.HV -> Some (HV i)
+    | F.HoV -> Some (HoV i)
+    | _ -> None);
+  break = (fun (type a) () (tag: a F.tag) (i:a): F.break option ->
       match tag with
-      | F.Break -> let space, indent = i in F.Break {space; indent}
-      | F.Full_break -> F.Full_break i
-      | _ -> raise F.Unknown_tag
-    ));
+      | F.Break -> let space, indent = i in Some (F.Break {space; indent})
+      | F.Full_break -> Some (F.Full_break i)
+      | _ -> None
+    );
   open_printer;
   close_printer;
 }

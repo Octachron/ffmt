@@ -43,7 +43,7 @@ let buffer b =
     ~geometry:Geometry.{margin=20; box_margin=10; max_indent=15}
     b
 
-let stdout = Formatter.stdout
+let stdout = Formatter.chan ~tags:[Semantics.box; More_semantics.ansi] stdout
 
 let explain got expected ppf =
   if got <> expected then
@@ -60,10 +60,15 @@ let exec (name,x,expected) =
   let b = Buffer.create 17 in
   x (buffer b) |> ignore;
   let res = Buffer.contents b in
-  let status = if res = expected then "[OK]" else "[FAILURE]" in
+  let green = More_semantics.( Fg, Green ) in
+  let red = More_semantics.( Fg, Red ) in
+  let status ppf = if res = expected then
+      Formatter.eval ppf [%fmt "@{<green>[OK]@}"] []
+    else
+      Formatter.eval ppf [%fmt "@{<red>[FAILURE]@}"] [] in
   Formatter.eval stdout
-    [%fmt "@{<v 0> Test [%{string name}]:%s@,%t@}"]
-    [status; explain res expected ] |> ignore
+    [%fmt "@{<v 0> Test [%{string name}]:%t@,%t@}"]
+    [status; explain res expected] |> ignore
 
 let full_break ppf = Formatter.eval ppf
     [%fmt "@{<hov 2>x@ @{<hov 2>y@\nz@}@ w@\nt@}"] []

@@ -24,7 +24,8 @@ type 'printer tagsem = T: ('data,'printer) tag_semantic ->
   'printer tagsem [@@unboxed]
 
 let rec find_sem:type any p.
-   p tagsem list -> any tag -> p tagsem list -> (p tagsem * p tagsem list) option =
+  p tagsem list -> any tag -> p tagsem list
+  -> (p tagsem * p tagsem list) option =
   fun rest tag -> function
   | [] -> None
   | T x :: q ->
