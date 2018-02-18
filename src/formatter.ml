@@ -25,15 +25,13 @@ type tag_name= Name: 'any Format.tag -> tag_name
 
 
 let lift f s ppf =
-  { ppf with metadata = f {E.geom=ppf.geometry; phy=ppf.phy} s ppf.metadata }
+  { ppf with metadata = f ppf.geometry ppf.phy s ppf.metadata }
 
 let string = lift E.string
 let open_box = lift E.open_box
 let break = lift E.break
 let full_break = lift E.full_break
-let close_box ppf =
-  { ppf with metadata =
-               E.close_box {E.geom=ppf.geometry;phy=ppf.phy} ppf.metadata }
+let close_box ppf = lift E.close_box () ppf
 
 exception No_open_tag
 type exn += Mismatched_close: {expected:'any Format.tag; got:'other Format.tag}

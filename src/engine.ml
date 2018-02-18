@@ -14,7 +14,6 @@ let pp_box (ppf:out_channel): Format.box -> unit = function
 
 open Format
 
-type break = { space: int; indent: int }
 type open_box_on_the_left = {indent:int;kind:box}
 
 type resolved_lit =
@@ -23,7 +22,7 @@ type resolved_lit =
   | Newline of int
   | Box of resolved_lit list
 type suspended_lit =
-    Break of break | Lit of resolved_lit | Open_box of box
+    Break of break_data | Lit of resolved_lit | Open_box of box
 
 module S = struct
   module M= Map.Make(struct
@@ -71,7 +70,7 @@ type position =
   }
 
 type suspended = {
-  break:break;
+  break:break_data;
   (** We are in the suspended mode because we don't know how to interpret
       this break yet *)
   after_block: suspended_lit S.t;
@@ -284,7 +283,7 @@ let reactivate position (context: open_box_on_the_left list) =
        { position with indent; kind }, q
 
 
-let translate_break (b:break) box =
+let translate_break (b:break_data) box =
   if is_vertical box then Newline (b.indent + box_indent box) else Space b.space
 
 let last_box (context: open_box_on_the_left list) str =
@@ -420,3 +419,12 @@ let start =
   { status = Direct;
     position= {current=0;indent=0; kind=H; last_indent=0 };
     context = [] }
+
+type 'a prim = Geometry.t -> Spec.phy -> 'a -> t -> t
+let lift f geom phy = f {geom;phy}
+
+let string = lift string
+let break = lift  break
+let full_break = lift full_break
+let close_box geom phy ()  =  close_box {geom;phy}
+let open_box = lift open_box
