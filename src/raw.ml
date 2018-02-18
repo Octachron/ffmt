@@ -1,48 +1,13 @@
-open Format
-
 type range = {start:int; stop:int}
 type substring = { content:string; range:range }
 
-type phy =
+type t =
   {
     string: substring -> unit;
     space: int -> unit;
     indent: Geometry.Indentation.t -> unit;
     break: unit -> unit;
   }
-
-type ('data,'printer) tag_semantic =  {
-  mine: 'any. 'any tag -> bool;
-  box: 'any. 'data -> 'any tag -> 'any -> box option;
-  break: 'any. 'data -> 'any tag -> 'any -> break option;
-  open_printer: 'any. 'data -> 'any tag -> 'any -> 'data * 'printer captured;
-  close_printer: 'data -> 'data * 'printer captured;
-  data :'data
-}
-
-type 'printer tagsem = T: ('data,'printer) tag_semantic ->
-  'printer tagsem [@@unboxed]
-
-let rec find_sem:type any p.
-  p tagsem list -> any tag -> p tagsem list
-  -> (p tagsem * p tagsem list) option =
-  fun rest tag -> function
-  | [] -> None
-  | T x :: q ->
-    if x.mine tag then Some (T x, List.rev_append rest q)
-    else find_sem (T x :: rest) tag q
-
-let find_sem x = find_sem [] x
-
-type open_tag = Open_tag: {tag:'a tag; with_box:bool} -> open_tag
-type 'a t = {
-  phy: phy;
-  geometry: Geometry.t;
-  tag_semantic: 'a tagsem list;
-  open_tags: open_tag list;
-}
-
-type 'a spec = 'a t
 
 
 let full s = { start = 0; stop=String.length s }

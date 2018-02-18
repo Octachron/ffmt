@@ -2,20 +2,21 @@
 
 
 module E = Engine
+module Sem = Tagsem
 
 type t = {
   geometry: Geometry.t;
-  phy: Spec.phy;
-  tag_semantic: t Spec.tagsem list;
-  open_tags: Spec.open_tag list;
+  phy: Raw.t;
+  tag_semantic: t Sem.t list;
+  open_tags: Sem.open_tag list;
   metadata: E.t
 }
 
-let with_sem f ?(geometry=Geometry.default) ?(tags=[Semantics.box]) x =
+let with_sem f ?(geometry=Geometry.default) ?(tags=[Sem.box]) x =
   { phy = f x; tag_semantic=tags; geometry; open_tags = []; metadata = E.start }
 
-let chan ?geometry = with_sem Spec.chan ?geometry
-let buffer ?geometry = with_sem Spec.buffer ?geometry
+let chan ?geometry = with_sem Raw.chan ?geometry
+let buffer ?geometry = with_sem Raw.buffer ?geometry
 
 let stdout = chan Pervasives.stdout
 let stderr = chan Pervasives.stderr
@@ -52,38 +53,38 @@ let rec eval:
       let iargs = Format.take k iargs in
       eval q iargs ppf
     | Open_tag (tag,data) :: q ->
-      begin match Spec.find_sem tag ppf.tag_semantic with
+      begin match Sem.find_sem tag ppf.tag_semantic with
         | None -> ppf
-        | Some (Spec.T sem, rest) ->
+        | Some (Sem.T sem, rest) ->
           let with_box, open_box =
             match sem.box sem.data tag data with
             | None -> false, (fun x -> x)
             | Some b -> true, open_box b in
           let open_tags: _ list =
-            Spec.Open_tag { with_box; tag } :: ppf.open_tags in
+            Sem.Open_tag { with_box; tag } :: ppf.open_tags in
           let sdata, p = sem.open_printer sem.data tag data in
-          let tag_semantic: _ list = Spec.T { sem with data = sdata } :: rest in
+          let tag_semantic: _ list = Sem.T { sem with data = sdata } :: rest in
           let ppf = ppf |> open_box |> p in
           eval q iargs { ppf with open_tags; tag_semantic }
       end
     | Close_any_tag :: q ->
       begin match ppf.open_tags with
         | [] -> raise No_open_tag
-        | Spec.Open_tag r :: tags -> close_tag r.with_box r.tag tags q iargs ppf
+        | Sem.Open_tag r :: tags -> close_tag r.with_box r.tag tags q iargs ppf
       end
     | Close_tag ctag :: q ->
       begin match ppf.open_tags with
         | [] -> raise No_open_tag
-        | Spec.Open_tag {tag; _ } :: _ when Name tag <> Name ctag ->
+        | Sem.Open_tag {tag; _ } :: _ when Name tag <> Name ctag ->
           raise (Mismatched_close {expected=tag;got=ctag})
-        | Spec.Open_tag {tag; with_box} :: tags ->
+        | Sem.Open_tag {tag; with_box} :: tags ->
           close_tag with_box tag tags q iargs ppf
       end
     | Point_tag (tag, tdata) :: q ->
       let ppf =
-      begin match Spec.find_sem tag ppf.tag_semantic with
+      begin match Sem.find_sem tag ppf.tag_semantic with
         | None -> ppf
-        | Some (Spec.T sem,rest) ->
+        | Some (Sem.T sem,rest) ->
           let data, p = sem.open_printer sem.data tag tdata in
           let ppf = p ppf in
           let ppf = begin match sem.break data tag tdata with
@@ -100,20 +101,20 @@ let rec eval:
       eval q iargs ppf
 
 and close_tag: type any free b right.
-  bool -> any Format.tag -> Spec.open_tag list
+  bool -> any Format.tag -> Sem.open_tag list
   -> (free,b * right,t) Format.format
   -> (free,right) Format.iargs
   -> t -> t  = fun with_box tag open_tags q iargs ppf ->
   let open Format in
-  match Spec.find_sem tag ppf.tag_semantic with
+  match Sem.find_sem tag ppf.tag_semantic with
   | None -> ppf
-  | Some (Spec.T sem, rest) ->
+  | Some (Sem.T sem, rest) ->
     let data, p =  sem.close_printer sem.data in
     (*  Printf.eprintf "Eval start %a\n%!" E.pp_pos ppf;*)
     let ppf = p ppf in
     let ppf = if with_box then close_box ppf else ppf in
     (* Printf.eprintf "Eval %a\n%!" E.pp_pos ppf;*)
-    let tag_semantic: _ list = Spec.T { sem with data } :: rest in
+    let tag_semantic: _ list = Sem.T { sem with data } :: rest in
     eval q iargs { ppf with open_tags; tag_semantic}
 
 let eval ppf fmt args = eval fmt (Format.make args) ppf

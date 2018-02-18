@@ -1,8 +1,8 @@
 (** Formatting engine implementation *)
 
-type dev = { geom: Geometry.t; phy: Spec.phy }
+type dev = { geom: Geometry.t; phy: Raw.t }
 
-let debug fmt = Printf.fprintf stderr ("debug engine: "^^fmt ^^ "\n%!")
+let debug fmt = Printf.ifprintf stderr ("debug engine: "^^fmt ^^ "\n%!")
 
 let pp_box (ppf:out_channel): Format.box -> unit = function
   | V n -> Printf.fprintf ppf "V %d" n
@@ -109,7 +109,7 @@ let box_indent: box -> int = function
   | B n | HV n | HoV n | V n-> n
   | H -> 0
 
-let phyline max_indent more (d:position) (phy:Spec.phy) =
+let phyline max_indent more (d:position) (phy:Raw.t) =
     let indent = min (d.indent + more + box_indent d.kind) max_indent in
     phy.break ();
     phy.indent {I.line = 0; column=indent};
@@ -120,7 +120,7 @@ let reindent n: box -> box = function
   | B _ -> B n | HV _ -> HV n | HoV _ -> HoV n | V _ -> V n
   | H -> H
 
-let phyreset kind (phy:Spec.phy) =
+let phyreset kind (phy:Raw.t) =
   let indent = 0 in
   let kind = reindent 0 kind in
   phy.break ();
@@ -132,7 +132,7 @@ let phyreset kind (phy:Spec.phy) =
 let newline {geom;phy} more (d:position) =
   phyline geom.max_indent more d phy
 
-let physpace (phy:Spec.phy) n (d:position) =
+let physpace (phy:Raw.t) n (d:position) =
   phy.space n;
   { d with current = n + d.current }
 (*
@@ -140,9 +140,9 @@ let space n d ppf =
   { ppf with status = Direct (physpace n d ppf.logical.phy) }
 *)
 
-let phystring s d (phy:Spec.phy) =
+let phystring s d (phy:Raw.t) =
   debug "direct printing «%s», %d ⇒ %d" s d.current (d.current + len s);
-  phy.string (Spec.all s);
+  phy.string (Raw.all s);
   { d with current = d.current + len s }
 
 let direct_string phy context d s  =
@@ -420,7 +420,7 @@ let start =
     position= {current=0;indent=0; kind=H; last_indent=0 };
     context = [] }
 
-type 'a prim = Geometry.t -> Spec.phy -> 'a -> t -> t
+type 'a prim = Geometry.t -> Raw.t -> 'a -> t -> t
 let lift f geom phy = f {geom;phy}
 
 let string = lift string
