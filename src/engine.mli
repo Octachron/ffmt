@@ -1,7 +1,7 @@
 type t
-val start: t
+val start: Raw.t -> t
 
-type 'a prim = Geometry.t -> Raw.t -> 'a -> t -> t
+type 'a prim = Geometry.t -> 'a -> t -> t
 val string: string prim
 val open_box: Format.box prim
 val close_box: unit prim

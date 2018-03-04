@@ -6,17 +6,16 @@ module Sem = Tagsem
 
 type t = {
   geometry: Geometry.t;
-  phy: Raw.t;
   tag_semantic: t Sem.t list;
   open_tags: Sem.open_tag list;
   metadata: E.t
 }
 
 let with_sem f ?(geometry=Geometry.default) ?(tags=[Sem.box]) x =
-  { phy = f x; tag_semantic=tags; geometry; open_tags = []; metadata = E.start }
+  { tag_semantic=tags; geometry; open_tags = []; metadata = E.start ( f x ) }
 
-let chan ?geometry = with_sem Raw.chan ?geometry
-let buffer ?geometry = with_sem Raw.buffer ?geometry
+let chan ?geometry = with_sem (new Raw.chan) ?geometry
+let buffer ?geometry = with_sem (new Raw.buffer) ?geometry
 
 let stdout = chan Pervasives.stdout
 let stderr = chan Pervasives.stderr
@@ -26,7 +25,7 @@ type tag_name= Name: 'any Format.tag -> tag_name
 
 
 let lift f s ppf =
-  { ppf with metadata = f ppf.geometry ppf.phy s ppf.metadata }
+  { ppf with metadata = f ppf.geometry s ppf.metadata }
 
 let string = lift E.string
 let open_box = lift E.open_box

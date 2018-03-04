@@ -2,4 +2,4 @@ all: runtest
 	jbuilder build @install
 
 runtest:
-	jbuilder runtest
+	jbuilder runtest --force
