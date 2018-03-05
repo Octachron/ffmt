@@ -92,16 +92,16 @@ let only_boxes str =
   S.M.for_all (fun _ -> function Open_box _ -> true | _ -> false) str
 
 
-type t = {
+type 'a t = {
   context: open_box_on_the_left list;
   position: position;
   status:status;
-  phy: Raw.t
+  phy: 'a Raw.t
 }
 
-type cursor = { position:position; phy: Raw.t }
-let cursor (ppf:t) = { position = ppf.position; phy=ppf.phy }
-let all context status (c:cursor) =
+type 'a cursor = { position:position; phy: 'a Raw.t }
+let cursor (ppf:'a t) = { position = ppf.position; phy=ppf.phy }
+let all context status (c:_ cursor) =
   { context;status; phy=c.phy; position= c.position }
 let update ppf cursor = all ppf.context ppf.status cursor
 
@@ -126,7 +126,7 @@ let reindent n: box -> box = function
   | B _ -> B n | HV _ -> HV n | HoV _ -> HoV n | V _ -> V n
   | H -> H
 
-let phyreset kind (phy:Raw.t) =
+let phyreset kind (phy:_ Raw.t) =
   let indent = 0 in
   let kind = reindent 0 kind in
   debug "line reset";
@@ -135,7 +135,7 @@ let phyreset kind (phy:Raw.t) =
   }
 
 
-let newline geom more (c:cursor) =
+let newline geom more (c: _ cursor) =
   phyline geom.G.max_indent more c
 
 let physpace  n {phy; position} =
@@ -146,7 +146,7 @@ let space n d ppf =
   { ppf with status = Direct (physpace n d ppf.logical.phy) }
 *)
 
-let phystring s (c:cursor) =
+let phystring s (c: _ cursor) =
   debug "direct printing «%s», %d ⇒ %d" s c.position.current
     (c.position.current + len s);
   { phy = c.phy#string (Raw.all s);
@@ -205,7 +205,7 @@ let commit_resolved_literal max_indent lits c =
       { c with position = { d with current = inside.position.current } } in
   List.fold_left elt c lits
 
-let rec advance_to_next_ambiguity geom context stream (c:cursor) =
+let rec advance_to_next_ambiguity geom context stream (c: _ cursor) =
   match S.(take front) stream with
   | Open_box b, rest ->
     debug "advance open box %a" pp_box b;
@@ -346,7 +346,7 @@ let eager_indent: box -> _ = function
   | B _ -> true
   | _ -> false
 
-let rec break geom br (ppf:t) =
+let rec break geom br (ppf: _ t) =
   debug "break {space=%d;indent=%d}" br.space br.indent;
   let c = cursor ppf in
   match ppf.status with
@@ -394,7 +394,7 @@ let rec break geom br (ppf:t) =
       { ppf with status = Suspended { sd with after_block; right  } }
 
 
-let rec full_break geom br (ppf:t) =
+let rec full_break geom br (ppf:_ t) =
   let pos = ppf.position in
   match ppf.status with
   | Direct ->
@@ -410,7 +410,7 @@ let rec full_break geom br (ppf:t) =
       ppf |> cursor |> actualize_break geom ppf.context sd
       |> full_break geom br
 
-let rec open_box geom b (ppf:t) =
+let rec open_box geom b (ppf: _ t) =
   let pos = ppf.position in
   match ppf.status with
   | Direct ->
@@ -431,13 +431,15 @@ let rec open_box geom b (ppf:t) =
           { s with after_block = S.push_back (Open_box b) s.after_block } in
       { ppf with status }
 
-type 'a prim = Geometry.t -> 'a -> t -> t
+type ('a,'b) prim = Geometry.t -> 'a -> 'b t -> 'b t
 let start phy =
   { status = Direct;
     position= {current=0;indent=0; kind=H; last_indent=0 };
     context = []; phy }
 
 let close_box geom () = close_box geom
+
+let flush (ppf: _ t) = ppf.phy#flush
 (*
 type 'a prim = Geometry.t -> Raw.t -> 'a -> t -> t
 let lift f geom phy = f {geom;phy}

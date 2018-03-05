@@ -4,11 +4,11 @@
 module E = Engine
 module Sem = Tagsem
 
-type t = {
+type 'a t = {
   geometry: Geometry.t;
-  tag_semantic: t Sem.t list;
+  tag_semantic: 'a t Sem.t list;
   open_tags: Sem.open_tag list;
-  metadata: E.t
+  metadata: 'a E.t
 }
 
 let with_sem f ?(geometry=Geometry.default) ?(tags=[Sem.box]) x =
@@ -27,10 +27,10 @@ type tag_name= Name: 'any Format.tag -> tag_name
 let lift f s ppf =
   { ppf with metadata = f ppf.geometry s ppf.metadata }
 
-let string = lift E.string
-let open_box = lift E.open_box
-let break = lift E.break
-let full_break = lift E.full_break
+let string x = lift E.string x
+let open_box x = lift E.open_box x
+let break x = lift E.break x
+let full_break x  = lift E.full_break x
 let close_box ppf = lift E.close_box () ppf
 
 exception No_open_tag
@@ -39,10 +39,10 @@ type exn += Mismatched_close: {expected:'any Format.tag; got:'other Format.tag}
 
 
 let rec eval:
-  type free b right.
-  (free,b * right,t) Format.format
+  type free b right final.
+  (free,b * right, final t) Format.format
   -> (free,right) Format.iargs
-  -> t -> t  =
+  -> final t -> final t  =
   let open Format in
   fun fmt iargs ppf -> match fmt with
     | [] -> ppf
@@ -99,11 +99,11 @@ let rec eval:
       end in
       eval q iargs ppf
 
-and close_tag: type any free b right.
+and close_tag: type any free b right final.
   bool -> any Format.tag -> Sem.open_tag list
-  -> (free,b * right,t) Format.format
+  -> (free,b * right, final t) Format.format
   -> (free,right) Format.iargs
-  -> t -> t  = fun with_box tag open_tags q iargs ppf ->
+  -> final t -> final t  = fun with_box tag open_tags q iargs ppf ->
   let open Format in
   match Sem.find_sem tag ppf.tag_semantic with
   | None -> ppf
@@ -117,3 +117,5 @@ and close_tag: type any free b right.
     eval q iargs { ppf with open_tags; tag_semantic}
 
 let eval ppf fmt args = eval fmt (Format.make args) ppf
+
+let flush fmt = E.flush fmt.metadata

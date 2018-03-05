@@ -38,10 +38,10 @@ let test' world ppf =
 let structural ppf =
   Formatter.eval ppf [%fmt "@[<box 1>12@[<v 1> -5@ -6@ -7@]@ 8@]"] []
 
-let buffer b =
+let buffer () =
   Formatter.buffer
     ~geometry:Geometry.{margin=20; box_margin=10; max_indent=15}
-    b
+    (Buffer.create 17)
 
 let stdout = Formatter.chan ~tags:[Tagsem.box; Semantics.ansi] stdout
 
@@ -57,9 +57,8 @@ let explain got expected ppf =
   else ppf
 
 let exec (name,x,expected) =
-  let b = Buffer.create 17 in
-  x (buffer b) |> ignore;
-  let res = Buffer.contents b in
+  let fmt = x @@ buffer () in
+  let res = Formatter.flush fmt in
   let green = Semantics.( Fg, {base=Green; bright=true} ) in
   let red = Semantics.( Fg, {base=Red; bright=true} ) in
   let bold = Semantics.bold in

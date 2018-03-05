@@ -33,7 +33,7 @@ let hv n = HV, n
 let hov n = HoV, n
 
 let break ~space ~indent = Formatter.break {space;indent}
-let space = break ~space:1 ~indent:0
+let space x = break ~space:1 ~indent:0 x
 
 let l x = Literal x
 
