@@ -59,8 +59,9 @@ type context =
     (** on the left, we have those inactive boxes *)
   }
 
-type position =
+type 'a position =
   {
+    phy: 'a Raw.t; (** the underlying driver *)
     current:int; (** we are currently writing at position *)
     kind:box; (** with this box context *)
     indent:int; (** and at this indentation *)
@@ -94,16 +95,14 @@ let only_boxes str =
 
 type 'a t = {
   context: open_box_on_the_left list;
-  position: position;
+  position: 'a position;
   status:status;
-  phy: 'a Raw.t
 }
 
-type 'a cursor = { position:position; phy: 'a Raw.t }
-let cursor (ppf:'a t) = { position = ppf.position; phy=ppf.phy }
-let all context status (c:_ cursor) =
-  { context;status; phy=c.phy; position= c.position }
-let update ppf cursor = all ppf.context ppf.status cursor
+let pos (ppf:'a t) = ppf.position
+let make context status position =
+  { context;status; position }
+let update ppf position = make ppf.context ppf.status position
 
 let len = String.length
 
@@ -115,11 +114,13 @@ let box_indent: box -> int = function
   | B n | HV n | HoV n | V n-> n
   | H -> 0
 
-let phyline max_indent more {position=d; phy} =
-  let indent = min (d.indent + more + box_indent d.kind) max_indent in
+let phyline max_indent more pos =
+  let indent = min (pos.indent + more + box_indent pos.kind) max_indent in
   debug "line break ⇒ %d" indent;
-  { phy = phy#break#indent {I.line = 0; column=indent};
-    position ={ d with current = indent; last_indent = indent }
+  { pos with
+    phy = pos.phy#break#indent {I.line = 0; column=indent};
+    current = indent;
+    last_indent = indent
   }
 
 let reindent n: box -> box = function
@@ -131,31 +132,30 @@ let phyreset kind (phy:_ Raw.t) =
   let kind = reindent 0 kind in
   debug "line reset";
   { phy = phy#break#indent {I.line = 1; column=indent};
-    position={ current = indent; indent; last_indent = indent; kind }
+    current = indent; indent; last_indent = indent; kind
   }
 
 
-let newline geom more (c: _ cursor) =
-  phyline geom.G.max_indent more c
+let newline geom more pos =
+  phyline geom.G.max_indent more pos
 
-let physpace  n {phy; position} =
-  { phy = phy#space n;
-    position = { position with current = n + position.current } }
+let physpace  n pos =
+  { pos with phy = pos.phy#space n;
+    current = n + pos.current }
 (*
 let space n d ppf =
   { ppf with status = Direct (physpace n d ppf.logical.phy) }
 *)
 
-let phystring s (c: _ cursor) =
-  debug "direct printing «%s», %d ⇒ %d" s c.position.current
-    (c.position.current + len s);
-  { phy = c.phy#string (Raw.all s);
-   position ={ c.position with current = c.position.current + len s }
+let phystring s pos =
+  debug "direct printing «%s», %d ⇒ %d" s pos.current
+    (pos.current + len s);
+  { pos with phy = pos.phy#string (Raw.all s);
+             current = pos.current + len s
   }
 
 let direct_string context c s  =
-  let {position;phy} = phystring s c in
-  { context; status=Direct; position; phy }
+  make context Direct (phystring s c)
 
 let rec suspended_lit_len indent current: _ list -> _  = function
   | Str s :: q ->
@@ -198,46 +198,44 @@ let commit_resolved_literal max_indent lits c =
     | Newline more -> phyline max_indent more c
     | Space sp -> physpace sp c
     | Box b ->
-      let d = c.position in
-      let inside = List.fold_left elt
-          { c with position = {d with indent = d.current; kind = B 0 } }
-          b in
-      { c with position = { d with current = inside.position.current } } in
+      let inside =
+        List.fold_left elt { c with indent = c.current; kind = B 0 } b in
+      { c with current = inside.current; phy = inside.phy } in
   List.fold_left elt c lits
 
-let rec advance_to_next_ambiguity geom context stream (c: _ cursor) =
+let rec advance_to_next_ambiguity geom context stream c =
   match S.(take front) stream with
   | Open_box b, rest ->
     debug "advance open box %a" pp_box b;
     (* When we meet a box without any ambiguity on its position,
        we put the current box on the left stack, and focus on this
        new box *)
-    let indent = c.position.current in
+    let indent = c.current in
     let context: open_box_on_the_left list =
-      { kind = c.position.kind; indent = c.position.indent } :: context in
+      { kind = c.kind; indent = c.indent } :: context in
     advance_to_next_ambiguity geom context rest
-      { c with position = { c.position with indent; kind = b } }
+      { c with indent; kind = b }
   | Break b, rest ->
     let status =
       Suspended {
                   break = b;
                   after_block = rest;
-                  right = suspended_len stream c.position;
+                  right = suspended_len stream c;
                 } in
-    debug "Advance up to new break, stop at %d" c.position.current;
-    all context status c
+    debug "Advance up to new break, stop at %d" c.current;
+    make context status c
   | Lit s, rest ->
     debug "advance lit";
        c
     |> commit_resolved_literal (max_indent geom) [s]
     |> advance_to_next_ambiguity geom context rest
   | exception Not_found ->
-    debug "empty stream: stop advance at %d" c.position.current;
-    all context Direct c
+    debug "empty stream: stop advance at %d" c.current;
+    make context Direct c
 
 let rec advance_to_next_box max_indent stream c =
   match S.(take front) stream with
-  | Open_box b, stream -> { c with position = { c.position with kind = b } }
+  | Open_box b, stream -> { c with kind = b }
   | Break b, stream ->
     c |> phyline max_indent b.indent
     |> advance_to_next_box max_indent stream
@@ -247,16 +245,16 @@ let rec advance_to_next_box max_indent stream c =
   | exception Not_found -> c
 
 let advance_to_next_ambiguity geom ctx stream c =
-  debug "Advance up to new break, start at %d" c.position.current;
+  debug "Advance up to new break, start at %d" c.current;
   advance_to_next_ambiguity geom ctx stream c
 
 let actualize_break geom context sd c =
   let c = newline geom sd.break.indent c in
-  match c.position.kind with
+  match c.kind with
   | HV n ->
-    { c with position = { c.position with kind = V n } }
+    { c with kind = V n }
     |> advance_to_next_box (max_indent geom) sd.after_block
-    |> all context Direct
+    |> make context Direct
   | b ->
     advance_to_next_ambiguity geom context sd.after_block c
 
@@ -264,13 +262,13 @@ let actualize_break geom context sd c =
 let rec string geom s ppf =
   match ppf.status with
   | Direct ->
-    direct_string ppf.context (cursor ppf) s
+    direct_string ppf.context ppf.position s
   | Suspended sd ->
     let right = sd.right + len s in
     debug "suspended printing «%s» %d|%d ⇒ %d > %d ? "
       s ppf.position.indent sd.right right geom.G.margin;
     if right > geom.G.margin then
-         cursor ppf
+         ppf.position
       |> actualize_break geom ppf.context sd
       |> string geom s
     else
@@ -324,13 +322,13 @@ let coalesce geom context sp c =
   let lit, rest = resolve_box bx sp sp.after_block [] in
   match rest with
   | None ->
-    let position, context = reactivate c.position context in
-    { c with position }
+    let c, context = reactivate c context in
+    c
     |> commit_resolved_literal (max_indent geom) [lit]
-    |> all context Direct
+    |> make context Direct
   | Some rest ->
     let after_block = S.push_back (Lit lit) rest  in
-    all context (Suspended { sp with after_block }) c
+    make context (Suspended { sp with after_block }) c
 
 let close_box geom ppf =
   match ppf.status with
@@ -340,7 +338,7 @@ let close_box geom ppf =
     { ppf with position; context }
   | Suspended sp ->
     debug "coalesce box %a" pp_box ppf.position.kind;
-    coalesce geom ppf.context sp (cursor ppf)
+    coalesce geom ppf.context sp ppf.position
 
 let eager_indent: box -> _ = function
   | B _ -> true
@@ -348,48 +346,45 @@ let eager_indent: box -> _ = function
 
 let rec break geom br (ppf: _ t) =
   debug "break {space=%d;indent=%d}" br.space br.indent;
-  let c = cursor ppf in
+  let c = ppf.position in
   match ppf.status with
-  | Direct -> begin match c.position.kind with
+  | Direct -> begin match c.kind with
       | H -> update ppf (physpace br.space c)
       | V more -> update ppf (newline geom br.indent c)
       | b ->
-        if c.position.current + br.space > geom.G.margin
+        if c.current + br.space > geom.G.margin
         || (eager_indent b &&
-            c.position.indent + br.indent + box_indent b
-            < c.position.last_indent)
+            c.indent + br.indent + box_indent b < c.last_indent)
         then
-            let kind: box = match c.position.kind with HV n -> V n | b -> b in
-
-            { c with position = {c.position with kind }}
+            let kind: box = match c.kind with HV n -> V n | b -> b in
+            { c  with kind }
             |> newline geom br.indent
             |> update ppf
           else
             let status =
               Suspended { break = br;
                           after_block = S.empty;
-                          right = c.position.current + br.space;
+                          right = c.current + br.space;
                         } in
             { ppf with status } end
   | Suspended sd ->
     let right = sd.right + br.space in
     let after_block = S.push_back (Break br) sd.after_block  in
-    debug "waiting for break resolution at %d" c.position.current;
-    let b = c.position.kind in
+    debug "waiting for break resolution at %d" c.current;
+    let b = c.kind in
     if right > geom.G.margin
-    || (eager_indent b && c.position.indent + br.indent + box_indent b <
-                          c.position.last_indent)
+    || (eager_indent b && c.indent + br.indent + box_indent b < c.last_indent)
     then
-      { position = ppf.position; phy = ppf.phy }
+      c
       |> actualize_break geom ppf.context sd
       |> break geom br
-    else match c.position.kind with
+    else match c.kind with
     | HoV _ | B _ when not (secondary_box sd.after_block) ->
-         cursor ppf
+         c
       |> physpace sd.break.space
       |> advance_to_next_ambiguity geom ppf.context after_block
     | _ ->
-      let right = suspended_len after_block c.position in
+      let right = suspended_len after_block c in
       debug "break in not hov ⇒ %d" right;
       { ppf with status = Suspended { sd with after_block; right  } }
 
@@ -398,24 +393,23 @@ let rec full_break geom br (ppf:_ t) =
   let pos = ppf.position in
   match ppf.status with
   | Direct ->
-    ppf |> cursor |> newline geom br |> update ppf
+    pos |> newline geom br |> update ppf
   | Suspended sd ->
     match pos.kind with
     | HoV _ | B _ when not (secondary_box sd.after_block) ->
-      ppf |> cursor |> physpace sd.break.space
+      pos |> physpace sd.break.space
       |> advance_to_next_ambiguity geom ppf.context sd.after_block
       |> full_break geom br
     | _ ->
       debug "breaking with a full break at %d" pos.current;
-      ppf |> cursor |> actualize_break geom ppf.context sd
-      |> full_break geom br
+      pos |> actualize_break geom ppf.context sd |> full_break geom br
 
 let rec open_box geom b (ppf: _ t) =
   let pos = ppf.position in
   match ppf.status with
   | Direct ->
     if pos.current > geom.G.box_margin then
-      phyreset pos.kind ppf.phy |> update ppf
+      phyreset pos.kind pos.phy |> update ppf
       |> open_box geom b
     else
       let position = { pos with kind = b; indent = pos.current } in
@@ -424,8 +418,7 @@ let rec open_box geom b (ppf: _ t) =
       { ppf with context; position }
   | Suspended s ->
     if s.right > geom.G.box_margin then
-      ppf |> cursor |> actualize_break geom ppf.context s
-      |> open_box geom b
+      pos |> actualize_break geom ppf.context s |> open_box geom b
     else
       let status = Suspended
           { s with after_block = S.push_back (Open_box b) s.after_block } in
@@ -434,12 +427,12 @@ let rec open_box geom b (ppf: _ t) =
 type ('a,'b) prim = Geometry.t -> 'a -> 'b t -> 'b t
 let start phy =
   { status = Direct;
-    position= {current=0;indent=0; kind=H; last_indent=0 };
-    context = []; phy }
+    position= {current=0;indent=0; kind=H; last_indent=0; phy };
+    context = [] }
 
 let close_box geom () = close_box geom
 
-let flush (ppf: _ t) = ppf.phy#flush
+let flush (ppf: _ t) = ppf.position.phy#flush
 (*
 type 'a prim = Geometry.t -> Raw.t -> 'a -> t -> t
 let lift f geom phy = f {geom;phy}
