@@ -43,7 +43,7 @@ let buffer () =
     ~geometry:Geometry.{margin=20; box_margin=10; max_indent=15}
     (Buffer.create 17)
 
-let stdout = Formatter.chan ~tags:[Tagsem.box; Semantics.ansi] stdout
+let stdout = Formatter.chan ~tags:[Tagsem.box; Ansi.sem] stdout
 
 let explain got expected ppf =
   if got <> expected then
@@ -59,10 +59,10 @@ let explain got expected ppf =
 let exec (name,x,expected) =
   let fmt = x @@ buffer () in
   let res = Formatter.flush fmt in
-  let green = Semantics.( Fg, {base=Green; bright=true} ) in
-  let red = Semantics.( Fg, {base=Red; bright=true} ) in
-  let bold = Semantics.bold in
-  let u, fk, i, crossed = Semantics.(u,fk,i, crossed) in
+  let green = Ansi.( Fg, {base=Green; bright=true} ) in
+  let red = Ansi.( Fg, {base=Red; bright=true} ) in
+  let bold = Ansi.bold in
+  let u, fk, i, crossed = Ansi.(u,fk,i, crossed) in
   let status ppf = if res = expected then
       Formatter.eval ppf [%fmt "@{<crossed>@{<green>[OK]@}@}"] []
     else

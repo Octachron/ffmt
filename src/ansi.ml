@@ -1,7 +1,8 @@
-
 module F= Format
+
 type 'a t =  'a Format.tag = ..
 
+type 'a printer = 'a Tagsem.printer
 
 type base_color = Red | Blue | Green | Cyan | Magenta | White | Black | Yellow
 
@@ -131,43 +132,49 @@ let default = {
   crossed_out = false
 }
 
-let open_printer (type a) data (tag: a F.tag) (data_tag:a) =
-  let prev = match data with
-    | [] -> default
-    | a :: _ -> a in
-  let st =
-    match tag, data_tag with
-    | Fg, fg -> { prev with fg }
-    | Bg, bg -> { prev with bg }
-    | Font, font -> { prev with font }
-    | Bold, bold -> {prev with bold }
-    | Underlined, () -> {prev with underlined = true }
-    | Overlined, () -> { prev with overlined = true }
-    | Framed, frame -> { prev with frame }
-    | Crossed_out, () -> { prev with crossed_out = true }
-    | _, _ -> prev
-  in
-     st :: data, style (prev,st)
 
 let close_printer data = match data with
   | prev :: (st :: _ as data) -> data, style (prev,st)
   | [prev] -> [], style (prev,default)
   | _ -> [], null
 
-let ansi =
-  let mine: type any. any F.tag -> bool = function
-    | Fg -> true | Bg -> true | Underlined -> true
-    | Overlined -> true | Bold -> true | Font -> true
-    | Framed -> true | Crossed_out -> true
-    | _ -> false in
-  Tagsem.T {
-    box = (fun _ _ _ -> None);
-    break = (fun _ _ _ -> None);
-    data = [default];
-    mine;
-    open_printer;
-    close_printer;
-}
+let sem =
+  object(_:'self)
+    constraint 'self = #Tagsem.semclass
+    val data = [default]
+    method mine: type any. any F.tag -> bool = function
+      | Fg -> true | Bg -> true | Underlined -> true
+      | Overlined -> true | Bold -> true | Font -> true
+      | Framed -> true | Crossed_out -> true
+      | _ -> false
+    method box: type any. any F.tag -> any -> _ option = fun _ _ -> None
+    method break:  type any. any F.tag -> any -> _ option = fun _ _ -> None
+
+    method open_printer: type a f. a F.tag -> a -> 'self * f printer =
+      fun tag data_tag ->
+        let prev = match data with
+          | [] -> default
+          | a :: _ -> a in
+        let st =
+          match tag, data_tag with
+          | Fg, fg -> { prev with fg }
+          | Bg, bg -> { prev with bg }
+          | Font, font -> { prev with font }
+          | Bold, bold -> {prev with bold }
+          | Underlined, () -> {prev with underlined = true }
+          | Overlined, () -> { prev with overlined = true }
+          | Framed, frame -> { prev with frame }
+          | Crossed_out, () -> { prev with crossed_out = true }
+          | _, _ -> prev
+        in
+        {< data = st :: data >}, style (prev,st)
+
+    method close_printer: type f. 'self * f printer =
+      match data with
+      | prev :: (st :: _ as data) -> {< data >}, style (prev,st)
+      | [prev] -> {< data = [] >}, style (prev,default)
+      | _ -> {< data = [] >}, null
+  end
 
 let bold = (Bold: _ F.tag ), (Bold:boldness)
 let u = Underlined, ()

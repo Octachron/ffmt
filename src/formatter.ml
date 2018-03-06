@@ -2,12 +2,15 @@
 
 
 module E = Engine
+module F = Format
 module Sem = Tagsem
 
-type 'a t = {
+type open_tag = Open_tag : {tag: 'any F.tag; with_box: bool } -> open_tag
+
+type 'a t = 'a Formatter_def.t = {
   geometry: Geometry.t;
-  tag_semantic: 'a t Sem.t list;
-  open_tags: Sem.open_tag list;
+  tag_semantic: Formatter_def.sem list;
+  open_tags: Formatter_def.open_tag list;
   metadata: 'a E.t
 }
 
@@ -54,15 +57,15 @@ let rec eval:
     | Open_tag (tag,data) :: q ->
       begin match Sem.find_sem tag ppf.tag_semantic with
         | None -> ppf
-        | Some (Sem.T sem, rest) ->
+        | Some (sem, rest) ->
           let with_box, open_box =
-            match sem.box sem.data tag data with
+            match sem#box tag data with
             | None -> false, (fun x -> x)
             | Some b -> true, open_box b in
           let open_tags: _ list =
             Sem.Open_tag { with_box; tag } :: ppf.open_tags in
-          let sdata, p = sem.open_printer sem.data tag data in
-          let tag_semantic: _ list = Sem.T { sem with data = sdata } :: rest in
+          let sem, p = sem#open_printer tag data in
+          let tag_semantic: _ list = sem :: rest in
           let ppf = ppf |> open_box |> p in
           eval q iargs { ppf with open_tags; tag_semantic }
       end
@@ -83,19 +86,19 @@ let rec eval:
       let ppf =
       begin match Sem.find_sem tag ppf.tag_semantic with
         | None -> ppf
-        | Some (Sem.T sem,rest) ->
-          let data, p = sem.open_printer sem.data tag tdata in
+        | Some (sem,rest) ->
+          let sem, p = sem#open_printer tag tdata in
           let ppf = p ppf in
-          let ppf = begin match sem.break data tag tdata with
+          let ppf = begin match sem#break tag tdata with
             | None -> ppf
             | Some Break {space; indent} ->
               break {space;indent} ppf
             | Some Full_break b ->
               full_break b ppf
           end in
-          let data, p = sem.close_printer data  in
+          let sem, p = sem#close_printer  in
           let ppf = p ppf in
-          { ppf with tag_semantic = T { sem with data } :: rest }
+          { ppf with tag_semantic = sem :: rest }
       end in
       eval q iargs ppf
 
@@ -107,13 +110,13 @@ and close_tag: type any free b right final.
   let open Format in
   match Sem.find_sem tag ppf.tag_semantic with
   | None -> ppf
-  | Some (Sem.T sem, rest) ->
-    let data, p =  sem.close_printer sem.data in
+  | Some (sem, rest) ->
+    let sem, p =  sem#close_printer in
     (*  Printf.eprintf "Eval start %a\n%!" E.pp_pos ppf;*)
     let ppf = p ppf in
     let ppf = if with_box then close_box ppf else ppf in
     (* Printf.eprintf "Eval %a\n%!" E.pp_pos ppf;*)
-    let tag_semantic: _ list = Sem.T { sem with data } :: rest in
+    let tag_semantic: _ list = sem :: rest in
     eval q iargs { ppf with open_tags; tag_semantic}
 
 let eval ppf fmt args = eval fmt (Format.make args) ppf
