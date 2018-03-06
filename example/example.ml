@@ -38,6 +38,16 @@ let test' world ppf =
 let structural ppf =
   Formatter.eval ppf [%fmt "@[<box 1>12@[<v 1> -5@ -6@ -7@]@ 8@]"] []
 
+type vec = { x:int; y:int}
+let ( +: ) x y = {x;y}
+
+let pp_vec {x;y} ppf = Formatter.eval ppf [%fmt "{x:%d;y:%d}"] [x;y]
+
+let vec ppf =
+  Formatter.eval ppf
+    [%fmt "@{<v 2> %{ int _*} %a$0@ %a$0@ %a$0@ %a$0@}"]
+    [pp_vec; 1; 1 +: 2; 3 +: 4; 5 +: 6; 7 +: 8]
+
 let buffer () =
   Formatter.buffer
     ~geometry:Geometry.{margin=20; box_margin=10; max_indent=15}
@@ -49,7 +59,7 @@ let explain got expected ppf =
   if got <> expected then
     let len = min (String.length got) (String.length expected) in
     let i = ref 0 in
-    while  got.[!i] = expected.[!i] do incr i done;
+    if len <> 0 then while  got.[!i] = expected.[!i] do incr i done;
     let sub s = String.sub s (max 0 (!i-10)) (min (!i + 10) (len- !i)) in
     Formatter.eval ppf
       [%fmt "@{<v 0>all:@,%s@,got %d$3     :@,%s@,expected %d$3:@,%s@}"]
@@ -88,9 +98,8 @@ let rec nested indent n ppf =
       [%fmt "@[<v indent>level 0@ [@ item@ item@ ]@]"] []
   else
     Formatter.eval ppf
-      [%fmt "@[<v indent>level %d@,[@,%{nested indent (n-1)}\
-             @,%{nested indent(n-1)}@,]@]"]
-      [n]
+      [%fmt "@[<v indent>level %d@,[@,%t$1@,%t$1@,]@]"]
+      [n; nested indent (n-1)]
 
 let fmt = [%fmt "%s$4 %d %d"]
 let fmt2 = fmt
@@ -188,5 +197,10 @@ z
 w
 t|};
 "Format concatenation", fmt3,
-{|⇒ 1 2⇒ 3 4|}
+{|⇒ 1 2⇒ 3 4|};
+"Common printer", vec,
+{| 1 {x:1;y:2}
+  {x:3;y:4}
+  {x:5;y:6}
+  {x:7;y:8}|}
 ]

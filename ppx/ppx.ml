@@ -25,12 +25,21 @@ let subparser loc x =
   let lexbuf = Lexing.from_string x in
   Parser.parse_expression Lexer.token (lexbuf @? loc)
 
-let implicit = function
+let implicit  = function
   | "d" -> [%expr int]
   | "s" -> [%expr string]
   | "f" -> [%expr float]
   | "B" | "b" -> [%expr bool]
   | _ -> [%expr int]
+
+let positional n arg  = match n with
+  | "d" -> [%expr int [%e arg] ]
+  | "s" -> [%expr string [%e arg]]
+  | "f" -> [%expr float [%e arg] ]
+  | "B" | "b" -> [%expr bool [%e arg]]
+  | "t" -> arg
+  | _ -> [%expr int]
+
 
 let rec nat n =
   if n <= 0 then [%expr Z]
@@ -109,14 +118,21 @@ let rec ast stream =
                      fun { right = a :: _; _ } -> [%e implicit n] a)]
     @:: ast stream
 
+  | POS_IMPLICIT_FRAG ("a",pos) ->
+    let eone = ge "one" loc in
+    let pone = gp "one" loc in
+    let arg = [%expr nth __iargs__ [%e nat pos]] in
+    [%expr
+      Captured (Size.(S Z), fun ({ right =[%p pone] :: _; _ } as __iargs__)
+                  -> [%e arg] [%e eone] )]
+    @:: ast stream
+
   | POS_IMPLICIT_FRAG (n,pos) ->
     let pargs = gp "iargs" loc in
     let eargs = ge "iargs" loc in
     let arg = [%expr nth [%e eargs] [%e nat pos]] in
-    [%expr Captured (Size.Z, fun [%p pargs] ->
-        [%e implicit n] [%e arg]
-      )
-    ] @:: ast stream
+    [%expr Captured (Size.Z, fun [%p pargs] -> [%e positional n arg] )]
+    @:: ast stream
   | FULL_BREAK n ->
     [%expr Point_tag(Full_break, [%e B.eint loc n])] @:: ast stream
   | _ -> assert false
