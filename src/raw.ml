@@ -3,6 +3,7 @@ type substring = { content:string; range:range }
 
 class virtual['reduced] t = object(self:'self)
     method virtual string: substring -> 'self
+    method len {range;_} = range.stop - range.start
     method virtual space: int -> 'self
     method virtual indent: Geometry.Indentation.t -> 'self
     method virtual break: 'self

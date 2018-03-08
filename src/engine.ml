@@ -104,8 +104,6 @@ let make context status position =
   { context;status; position }
 let update ppf position = make ppf.context ppf.status position
 
-let len = String.length
-
 module G = Geometry
 module I = Geometry.Indentation
 
@@ -148,29 +146,30 @@ let space n d ppf =
 *)
 
 let phystring s pos =
+  let r = Raw.all s in
   debug "direct printing «%s», %d ⇒ %d" s pos.current
-    (pos.current + len s);
-  { pos with phy = pos.phy#string (Raw.all s);
-             current = pos.current + len s
+    (pos.current + pos.phy#len r);
+  { pos with phy = pos.phy#string r;
+             current = pos.current + pos.phy#len r
   }
 
 let direct_string context c s  =
   make context Direct (phystring s c)
 
-let rec suspended_lit_len indent current: _ list -> _  = function
+let rec suspended_lit_len phy indent current: _ list -> _  = function
   | Str s :: q ->
-    debug "str %d ⇒ %d" current (current + len s);
-    suspended_lit_len indent (current + len s) q
+    debug "str %d ⇒ %d" current (current + phy#len (Raw.all s));
+    suspended_lit_len phy indent (current + phy#len (Raw.all s)) q
   | Newline more :: q->
-      suspended_lit_len (indent + more) (indent + more) q
-  | Space sp :: q-> suspended_lit_len indent (current + sp) q
+      suspended_lit_len phy (indent + more) (indent + more) q
+  | Space sp :: q-> suspended_lit_len phy indent (current + sp) q
   | Box box :: q ->
-    suspended_lit_len indent (suspended_lit_len current current box) q
+    suspended_lit_len phy indent (suspended_lit_len phy current current box) q
   | [] -> debug "lit: ⇒ %d" current; current
 
 let is_vertical (x: box) = match x with V _ -> true | _ -> false
 
-let suspended_len_tok direct = function
+let suspended_len_tok phy direct = function
   | Break b -> begin
       match direct.kind with
       | V more -> { direct with current = direct.indent + more + b.indent }
@@ -180,12 +179,13 @@ let suspended_len_tok direct = function
     end
   | Open_box v -> { direct with indent = direct.current; kind = v }
   | Lit l ->
-    { direct with current =
-                    suspended_lit_len direct.indent direct.current [l]}
+    let current =
+        suspended_lit_len phy direct.indent direct.current [l] in
+    { direct with current}
 
-let suspended_len stream direct =
+let suspended_len phy stream direct =
   let all =
-    S.fold (fun _key tok direct -> suspended_len_tok direct tok)
+    S.fold (fun _key tok direct -> suspended_len_tok phy direct tok)
       stream direct in
   debug "reevaluted size: %d ⇒ %d "direct.current all.current;
   all.current
@@ -220,7 +220,7 @@ let rec advance_to_next_ambiguity geom context stream c =
       Suspended {
                   break = b;
                   after_block = rest;
-                  right = suspended_len stream c;
+                  right = suspended_len c.phy stream c;
                 } in
     debug "Advance up to new break, stop at %d" c.current;
     make context status c
@@ -264,7 +264,7 @@ let rec string geom s ppf =
   | Direct ->
     direct_string ppf.context ppf.position s
   | Suspended sd ->
-    let right = sd.right + len s in
+    let right = sd.right + ppf.position.phy#len (Raw.all s) in
     debug "suspended printing «%s» %d|%d ⇒ %d > %d ? "
       s ppf.position.indent sd.right right geom.G.margin;
     if right > geom.G.margin then
@@ -384,7 +384,7 @@ let rec break geom br (ppf: _ t) =
       |> physpace sd.break.space
       |> advance_to_next_ambiguity geom ppf.context after_block
     | _ ->
-      let right = suspended_len after_block c in
+      let right = suspended_len c.phy after_block c in
       debug "break in not hov ⇒ %d" right;
       { ppf with status = Suspended { sd with after_block; right  } }
 

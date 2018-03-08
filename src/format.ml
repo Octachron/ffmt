@@ -81,7 +81,6 @@ let rec nth: type elt a right. (elt,a) index -> a args -> elt =
 let (.%()) iargs n = nth n iargs.all
 let nth x y = x.%(y)
 
-
 let rec take: type free fmt s e.  (s, e) Size.t -> (free,s) iargs ->
   (free,e) iargs =
   fun n iargs -> match n, iargs.right with
