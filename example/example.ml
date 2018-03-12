@@ -1,13 +1,15 @@
 open Stringi
 open Combinators
 
-let test s ppf =
+let fprintf = Formatter.fprintf
+
+let test s =
   let open Handwritten in
   let b = Format.Point_tag (Format.Break, (1,0)) in
   let fb n = Format.Point_tag(Format.Full_break, n) in
   let b0: _ Format.tag * _ = Format.B, 0 in
   let v = v 2 and hv = hv 0 in
-  Formatter.eval ppf
+  fprintf
     [ !<(box 1); l"123:";
       !<(box 1); l"Hello"; l" "; !$(string s); l" N°"; Z %: int; l"?";
       b;
@@ -24,8 +26,8 @@ let test s ppf =
     ]
     [1;"How is your day N°"; float; 3.1415926535 ]
 
-let test' world ppf =
-  Formatter.eval ppf
+let test' world =
+  fprintf
     [%fmt "@{<box 1>123: @{<box 1>今日は %{string world} N°%d!@ %s$1%d$0?@ \
            π=%{$2 $3} or %{float __*}!@}@ \
            a list:@ @{<v 2>1@ 23@ 4567@ 89ABCDE@ 123456@}@ abcdef@}\
@@ -35,16 +37,16 @@ let test' world ppf =
     [1; "How is your day N°"; float; 3.1415926535 ]
 
 
-let structural ppf =
-  Formatter.eval ppf [%fmt "@[<box 1>12@[<v 1> -5@ -6@ -7@]@ 8@]"] []
+let structural =
+  fprintf [%fmt "@[<box 1>12@[<v 1> -5@ -6@ -7@]@ 8@]"] []
 
 type vec = { x:int; y:int}
 let ( +: ) x y = {x;y}
 
-let pp_vec {x;y} ppf = Formatter.eval ppf [%fmt "{x:%d;y:%d}"] [x;y]
+let pp_vec {x;y} = fprintf [%fmt "{x:%d;y:%d}"] [x;y]
 
-let vec ppf =
-  Formatter.eval ppf
+let vec =
+  fprintf
     [%fmt "@{<v 2> %{ int _*} %a$0@ %a$0@ %a$0@ %a$0@}"]
     [pp_vec; 1; 1 +: 2; 3 +: 4; 5 +: 6; 7 +: 8]
 
@@ -61,9 +63,9 @@ let explain got expected ppf =
     let i = ref 0 in
     if len <> 0 then while  got.[!i] = expected.[!i] do incr i done;
     let sub s = String.sub s (max 0 (!i-10)) (min (!i + 10) (len- !i)) in
-    Formatter.eval ppf
+    fprintf
       [%fmt "@{<v 0>all:@,%s@,got %d$3     :@,%s@,expected %d$3:@,%s@}"]
-          [got; sub got; sub expected;!i]
+          [got; sub got; sub expected;!i] ppf
   else ppf
 
 let exec (name,x,expected) =
@@ -73,42 +75,42 @@ let exec (name,x,expected) =
   let red = Ansi.( Fg, {base=Red; bright=true} ) in
   let bold = Ansi.bold in
   let u, fk, i, crossed = Ansi.(u,fk,i, crossed) in
-  let status ppf = if res = expected then
-      Formatter.eval ppf [%fmt "@{<crossed>@{<green>[OK]@}@}"] []
+  let status = if res = expected then
+      fprintf [%fmt "@{<crossed>@{<green>[OK]@}@}"] []
     else
-      Formatter.eval ppf [%fmt "@{<red>[FAILURE]@}"] [] in
-  Formatter.eval stdout
+      fprintf [%fmt "@{<red>[FAILURE]@}"] [] in
+  fprintf 
     [%fmt "@{<v 0> @{<fk>@{<u>Test@}@} @{<i>@{<bold>[%{string name}]@}@}:%t@,%t@}"]
-    [status; explain res expected] |> ignore
+    [status; explain res expected] stdout |> ignore
 
-let full_break ppf = Formatter.eval ppf
+let full_break = fprintf
     [%fmt "@{<hov 2>x@ @{<hov 2>y@\nz@}@ w@\nt@}"] []
 
-let box_margin ppf = Formatter.eval ppf
+let box_margin = fprintf
     [%fmt "@{<hov 1>break here:@ @{<hov 0>new box@}@}"] []
 (* the second hov box triggers the upstream break to avoid opening
    beyond the box margin *)
 
-let box_margin_2 ppf = Formatter.eval ppf
+let box_margin_2 = fprintf
     [%fmt "@{<hov 1>reset break here:@{<hov 0>new box@}@}"] []
 (* the second hov box is rejected to the left *)
 
-let rec nested indent n ppf =
-  if n = 0 then Formatter.eval ppf
-      [%fmt "@[<v indent>level 0@ [@ item@ item@ ]@]"] []
+let rec nested indent n =
+  if n = 0 then
+    fprintf [%fmt "@[<v indent>level 0@ [@ item@ item@ ]@]"] []
   else
-    Formatter.eval ppf
+    fprintf
       [%fmt "@[<v indent>level %d@,[@,%t$1@,%t$1@,]@]"]
       [n; nested indent (n-1)]
 
 let fmt = [%fmt "%s$4 %d %d"]
 let fmt2 = fmt
 
-let fmt3 ppf = Formatter.eval ppf
+let fmt3 = fprintf
     Format.(fmt ^^ fmt2) [1;2;3;4;"⇒"]
 
-let break_all ppf =
-  Formatter.eval ppf
+let break_all =
+  fprintf
     [%fmt "@[<hv 0>x@ y@ z@ w@;<1000 0>t@]"] []
 
 let () =

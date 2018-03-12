@@ -119,6 +119,6 @@ and close_tag: type any free b right final.
     let tag_semantic: _ list = sem :: rest in
     eval q iargs { ppf with open_tags; tag_semantic}
 
-let eval ppf fmt args = eval fmt (Format.make args) ppf
+let fprintf fmt args = eval fmt (Format.make args)
 
 let flush fmt = E.flush fmt.metadata
