@@ -180,22 +180,23 @@ let rec suspended_lit_len phy indent current: _ list -> _  = function
 let is_vertical (x: box) = match x with V _ -> true | _ -> false
 
 let suspended_len_tok phy tok direct = match tok with
-  | `Minor Break b -> begin
-      match direct.kind with
-      | V more -> { direct with current = direct.indent + more + b.indent }
-      | _ ->
-        debug "break %d ⇒ %d" direct.current (direct.current + b.space);
-        { direct with current = direct.current + b.space }
-    end
-  | `Major v -> { direct with indent = direct.current; kind = v }
-  | `Minor Lit l ->
+  | Lit l ->
     let current =
-        suspended_lit_len phy direct.indent direct.current [l] in
+      suspended_lit_len phy direct.indent direct.current [l] in
     { direct with current}
+  | Break b ->
+    match direct.kind with
+    | V more -> { direct with current = direct.indent + more + b.indent }
+    | _ ->
+      debug "break %d ⇒ %d" direct.current (direct.current + b.space);
+      { direct with current = direct.current + b.space }
+
+let suspended_len_box kind direct =
+  { direct with indent = direct.current; kind  }
 
 let suspended_len phy stream direct =
   let all =
-    Q.fold (suspended_len_tok phy) stream direct in
+    Q.fold (suspended_len_tok phy) suspended_len_box stream direct in
   debug "reevaluted size: %d ⇒ %d "direct.current all.current;
   all.current
 

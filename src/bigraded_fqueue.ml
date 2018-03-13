@@ -82,21 +82,21 @@ let push_maj major = function
                   penultimate = major; last = Q.empty }
 
 let fold_minor f x acc =
-  Q.fold (fun acc x -> f (`Minor x) acc ) acc x
-let fold (type b) (f: _ -> b -> b) gr acc = match gr with
+  Q.fold (fun acc x -> f x acc ) acc x
+let fold (type b) (f: _ -> b -> b) (g: _ -> b -> b) gr acc = match gr with
   | Single l -> fold_minor f l acc
   | Double r ->
     acc |> fold_minor f r.first
-    |> f (`Major r.middle)
+    |> g r.middle
     |> fold_minor f r.last
   | More r ->
     acc |> fold_minor f r.first
     |> (fun acc -> Q.fold
-           (fun acc (x,s) -> acc |> f (`Major x) |> fold_minor f s )
+           (fun acc (x,s) -> acc |> g x |> fold_minor f s )
            acc
            r.middle
        )
-    |> f (`Major r.penultimate)
+    |> g r.penultimate
     |> fold_minor f r.last
 
 let empty = Single Q.empty

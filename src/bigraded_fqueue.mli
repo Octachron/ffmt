@@ -16,4 +16,7 @@ val is_empty: ('a,'b) t -> bool
 val secondary: ('a,'b) t -> bool
 
 val fold:
-  ([`Minor of 'a|`Major of 'b] -> 'acc -> 'acc) -> ('a,'b) t -> 'acc -> 'acc
+     ('a -> 'acc -> 'acc)
+  -> ('b -> 'acc -> 'acc)
+  -> ('a,'b) t
+  -> 'acc -> 'acc
