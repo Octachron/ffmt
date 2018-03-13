@@ -111,7 +111,7 @@ let fmt3 = fprintf
 
 let break_all =
   fprintf
-    [%fmt "@[<hv 0>x@ y@ z@ w@;<1000 0>t@]"] []
+    [%fmt "@[<hv 0>x@ y@ z@ w@\nt@]"] []
 
 let boxes_in_hv =
   fprintf
