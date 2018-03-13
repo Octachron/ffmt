@@ -113,6 +113,11 @@ let break_all =
   fprintf
     [%fmt "@[<hv 0>x@ y@ z@ w@;<1000 0>t@]"] []
 
+let boxes_in_hv =
+  fprintf
+    [%fmt "@[<hv 0>x@ y@ z@ w@ @[<hov 0>a@ b@ c@ d@ e@]@ 1@ 2@ 3@]"]
+    []
+
 let () =
   List.iter exec [
     "Handwritten", test "world",
@@ -204,5 +209,14 @@ t|};
 {| 1 {x:1;y:2}
   {x:3;y:4}
   {x:5;y:6}
-  {x:7;y:8}|}
+  {x:7;y:8}|};
+"Nested boxes in hv boxes", boxes_in_hv,
+{|x
+y
+z
+w
+a b c d e
+1
+2
+3|}
 ]

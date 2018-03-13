@@ -245,14 +245,14 @@ let rec advance_to_next_ambiguity geom context stream c =
 
 let rec advance_to_next_box max_indent stream c =
   match Q.take_front stream with
-  | Major(b, stream) -> { c with kind = b }
+  | Major(b, _) -> c, stream
   | Minor(Break b, stream) ->
     c |> phyline max_indent b.indent
     |> advance_to_next_box max_indent stream
   | Minor(Lit s, stream) ->
     c |> commit_resolved_literal max_indent [s]
       |> advance_to_next_box max_indent stream
-  | Empty -> c
+  | Empty -> c, Q.empty
 
 let advance_to_next_ambiguity geom ctx stream c =
   debug "Advance up to new break, start at %d" c.current;
@@ -262,9 +262,9 @@ let actualize_break geom context sd c =
   let c = newline geom sd.break.indent c in
   match c.kind with
   | HV n ->
-    { c with kind = V n }
-    |> advance_to_next_box (max_indent geom) sd.after
-    |> make context Direct
+    let c, stream =
+      advance_to_next_box (max_indent geom) sd.after { c with kind = V n } in
+    advance_to_next_ambiguity geom context stream c
   | b ->
     advance_to_next_ambiguity geom context sd.after c
 
