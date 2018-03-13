@@ -18,7 +18,7 @@ let stream lex loc s =
 let stop = [%expr [] ]
 let (@::) x y = [%expr [%e x] :: [%e y] ]
 
-let str loc x = Ast_builder.Default.estring loc x
+let str loc x = Ast_builder.Default.estring ~loc x
 
 
 let subparser loc x =
@@ -75,7 +75,7 @@ let rec snat = function
 
 let frag loc s=
   let s = stream Lex.subfrags loc s in
-  let rec rewrite with_iarg n ls = let tok, loc = s () in
+  let rec rewrite with_iarg n ls = let tok, _loc = s () in
     match tok with
     | Lex.EOF -> contextualize with_iarg n @@ List.rev @@ ls
     | IMPLICIT_POS_ARG pos ->
@@ -103,8 +103,8 @@ let rec ast stream =
   | CLOSE_TAG ->
     [%expr Close_any_tag] @:: ast stream
   | BREAK {space;indent} ->
-    let space = Ast_builder.Default.eint loc space
-    and indent = Ast_builder.Default.eint loc indent in
+    let space = Ast_builder.Default.eint ~loc space
+    and indent = Ast_builder.Default.eint ~loc indent in
     [%expr Point_tag(Break, ([%e space], [%e indent])) ] @:: ast stream
   | IMPLICIT_FRAG "a" ->
     [%expr Captured ( Size.(S (S Z)),
@@ -119,8 +119,8 @@ let rec ast stream =
     @:: ast stream
 
   | POS_IMPLICIT_FRAG ("a",pos) ->
-    let eone = ge "one" loc in
-    let pone = gp "one" loc in
+    let eone = ge "one" ~loc in
+    let pone = gp "one" ~loc in
     let arg = [%expr nth __iargs__ [%e nat pos]] in
     [%expr
       Captured (Size.(S Z), fun ({ right =[%p pone] :: _; _ } as __iargs__)
@@ -128,13 +128,13 @@ let rec ast stream =
     @:: ast stream
 
   | POS_IMPLICIT_FRAG (n,pos) ->
-    let pargs = gp "iargs" loc in
-    let eargs = ge "iargs" loc in
+    let pargs = gp "iargs" ~loc in
+    let eargs = ge "iargs" ~loc in
     let arg = [%expr nth [%e eargs] [%e nat pos]] in
     [%expr Captured (Size.Z, fun [%p pargs] -> [%e positional n arg] )]
     @:: ast stream
   | FULL_BREAK n ->
-    [%expr Point_tag(Full_break, [%e B.eint loc n])] @:: ast stream
+    [%expr Point_tag(Full_break, [%e B.eint ~loc n])] @:: ast stream
   | _ -> assert false
 
 

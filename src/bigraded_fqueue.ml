@@ -56,8 +56,8 @@ let take_back = function
       Minor(x, Double { r with last })
 
 let take_major_back = function
-  | Single s -> Single Q.empty, None, Q.to_seq s
-  | Double r -> Single r.first, Some r.middle, Q.to_seq r.last
+  | Single s -> None, Q.to_seq s
+  | Double r -> Some (Single r.first, r.middle), Q.to_seq r.last
   | More r ->
     let middle, (p,last) = Q.take_back_exn r.middle in
     let rest =
@@ -65,7 +65,7 @@ let take_major_back = function
         Double {first=r.first; middle = p; last }
       else
         More { r with middle; last; penultimate = p } in
-    rest, Some r.penultimate, Q.to_seq r.last
+    Some (rest, r.penultimate), Q.to_seq r.last
 
 let push_min (minor:'a): ('a,'b) t -> ('a,'b) t = function
   | Single l -> Single (Q.snoc l minor)

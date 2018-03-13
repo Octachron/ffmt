@@ -72,7 +72,7 @@ type (_,_,_) format =
 
 
 
-let rec nth: type elt a right. (elt,a) index -> a args -> elt =
+let rec nth: type elt a. (elt,a) index -> a args -> elt =
   fun n  args ->
   match n, args with
   | Z , a :: _ -> a
@@ -81,7 +81,7 @@ let rec nth: type elt a right. (elt,a) index -> a args -> elt =
 let (.%()) iargs n = nth n iargs.all
 let nth x y = x.%(y)
 
-let rec take: type free fmt s e.  (s, e) Size.t -> (free,s) iargs ->
+let rec take: type free s e.  (s, e) Size.t -> (free,s) iargs ->
   (free,e) iargs =
   fun n iargs -> match n, iargs.right with
     | Size.Z, _ -> iargs
@@ -91,7 +91,6 @@ let rec (^^): type left right b free fmt.
   (free,right * left,fmt) format -> (*(left,right) Size.t ->*)
   (free,b * right,fmt) format ->
   (free, b * left,fmt) format =
-  let open Size in
   fun l r -> match l with
     | [] -> r
     | Captured(k,f) :: q -> Captured(k,f) :: (q ^^ r)

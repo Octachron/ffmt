@@ -6,7 +6,7 @@ type ('a,'b) answer =
 
 val take_front: ('a,'b) t -> ('a,'b) answer
 val take_back: ('a,'b) t -> ('a,'b) answer
-val take_major_back:('a,'b) t -> ('a,'b) t * 'b option * 'a Sequence.t
+val take_major_back:('a,'b) t -> (('a,'b) t * 'b) option * 'a Sequence.t
 
 val push_min: 'a -> ('a,'b) t -> ('a,'b) t
 val push_maj: 'b -> ('a,'b) t -> ('a,'b) t

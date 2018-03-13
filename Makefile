@@ -1,5 +1,7 @@
-all: runtest
-	jbuilder build @install
+all: runtest lib
 
-runtest:
+lib:
+	jbuilder build --dev @install
+
+runtest: lib
 	jbuilder runtest --force

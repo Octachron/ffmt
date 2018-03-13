@@ -1,7 +1,7 @@
 type range = {start:int; stop:int}
 type substring = { content:string; range:range }
 
-class virtual['reduced] t = object(self:'self)
+class virtual['reduced] t = object(_self:'self)
     method virtual string: substring -> 'self
     method len {range;_} = range.stop - range.start
     method virtual space: int -> 'self
@@ -53,7 +53,7 @@ type symbolic =
   | Indent of Geometry.Indentation.t
 
 class free =
-  object(self)
+  object
     inherit [symbolic list]t
     val history = []
     method string s = {< history = String s :: history >}

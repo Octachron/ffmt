@@ -107,7 +107,6 @@ and close_tag: type any free b right final.
   -> (free,b * right, final t) Format.format
   -> (free,right) Format.iargs
   -> final t -> final t  = fun with_box tag open_tags q iargs ppf ->
-  let open Format in
   match Sem.find_sem tag ppf.tag_semantic with
   | None -> ppf
   | Some (sem, rest) ->

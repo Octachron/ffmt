@@ -65,12 +65,6 @@ end
 
 module Q = Bigraded_fqueue
 
-type context =
-  { indent: int;
-    left_context: open_box_on_the_left list;
-    (** on the left, we have those inactive boxes *)
-  }
-
 type 'a position =
   {
     phy: 'a Raw.t; (** the underlying driver *)
@@ -109,7 +103,6 @@ type 'a t = {
   status:status;
 }
 
-let pos (ppf:'a t) = ppf.position
 let make context status position =
   { context;status; position }
 let update ppf position = make ppf.context ppf.status position
@@ -245,7 +238,7 @@ let rec advance_to_next_ambiguity geom context stream c =
 
 let rec advance_to_next_box max_indent stream c =
   match Q.take_front stream with
-  | Major(b, _) -> c, stream
+  | Major _ -> c, stream
   | Minor(Break b, stream) ->
     c |> phyline max_indent b.indent
     |> advance_to_next_box max_indent stream
@@ -265,8 +258,7 @@ let actualize_break geom context sd c =
     let c, stream =
       advance_to_next_box (max_indent geom) sd.after { c with kind = V n } in
     advance_to_next_ambiguity geom context stream c
-  | b ->
-    advance_to_next_ambiguity geom context sd.after c
+  | _ -> advance_to_next_ambiguity geom context sd.after c
 
 
 let rec string geom s ppf =
@@ -312,7 +304,7 @@ let last_box (context: open_box_on_the_left list) gr =
     | [] -> (H: Format.box), rest
     | a :: ctx -> a.kind, rest*)
 
-let resolve_box bx sp stream =
+let resolve_box bx stream =
   debug "resolving %a box" pp_box bx;
   let translate bx = function
     | Lit s -> s
@@ -322,13 +314,13 @@ let resolve_box bx sp stream =
 
 let coalesce geom context sp c =
   match Q.take_major_back sp.after with
-  | rest, Some b, last_box_content ->
-    let lit = resolve_box b sp last_box_content in
+  | Some (rest,b), last_box_content ->
+    let lit = resolve_box b last_box_content in
     let after = Q.push_min (Lit lit) rest in
     make context (Suspended {sp with after}) c
-  | rest, None, last_box_content ->
+  | None, last_box_content ->
     let c, context = reactivate c context in
-    let lit = resolve_box c.kind sp last_box_content in
+    let lit = resolve_box c.kind last_box_content in
     c
     |> commit_resolved_literal (max_indent geom) [lit]
     |> make context Direct
@@ -353,7 +345,7 @@ let rec break geom br (ppf: _ t) =
   match ppf.status with
   | Direct -> begin match c.kind with
       | H -> update ppf (physpace br.space c)
-      | V more -> update ppf (newline geom br.indent c)
+      | V _ -> update ppf (newline geom br.indent c)
       | b ->
         if c.current + br.space > geom.G.margin
         || (eager_indent b &&

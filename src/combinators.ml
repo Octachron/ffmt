@@ -6,12 +6,12 @@ module E = Engine
 module Handwritten = struct
   let ($) n x = Captured (n,x)
   let keep f = Size.Z $ f
-  let (!$) x = (keep @@ fun iargs -> x)
+  let (!$) x = (keep @@ fun _iargs -> x)
 
   let (%:) n typ =  (keep @@ fun iargs -> typ iargs.%(n) )
   let (%:%) n p = ( keep @@ fun iargs -> iargs.%(p) iargs.%(n))
 
-  let take f = Size.(S Z), fun x -> let elt, x = current x in f elt
+  let take f = Size.(S Z), fun x -> let elt, _ = current x in f elt
   let (!) (k,f) = k $ f
   let skip (k,f) =  Size.(S k), fun x -> let _, x =current x in f x
 
@@ -53,7 +53,7 @@ let listlike left sep right elt l ppf =
 let iterable left sep right iter elt collection ppf =
   let stack = ref None in
   let ppf = ref (left ppf) in
-  let rec elts elt x =
+  let elts elt x =
     match !stack with
     | None -> stack:= Some x
     | Some prev ->
