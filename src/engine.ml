@@ -44,13 +44,18 @@ module S = struct
       let max = max m in
       M.add (max +1) x m
 
-  let take pos m =
+  let is_empty = M.is_empty
+
+  let take_exn pos m =
     let max, elt =  pos m in
-    elt, M.remove max m
+    (elt, M.remove max m)
+
+  let take pos m =
+    if is_empty m then None
+    else Some(take_exn pos m)
 
   let cardinal = M.cardinal
   let empty = M.empty
-  let is_empty = M.is_empty
   let fold = M.fold
 
   type ('a,'b) graded =
@@ -65,51 +70,51 @@ module S = struct
 
   let take_front = function
     | Single s ->
-      if is_empty s then Empty else
-        let x, r = take front s in Minor(x, Single r)
+      begin match take front s with
+        | None -> Empty
+        | Some(x,r) -> Minor(x, Single r)
+      end
     | More r ->
-      if is_empty r.first then
-        let (mj, first), middle = take front r.middle in
-        if is_empty middle then
-          Major(mj,Double{first;middle = r.penultimate;last=r.last})
-        else
-          Major(mj, More { r with first; middle } )
-      else
-        let x, first = take front r.first in
-        Minor(x, More { r with first } )
-    | Double r ->
-      if is_empty r.first then
-        Major (r.middle, Single r.last)
-      else
-        let x, first = take front r.first in
+      begin match take front r.first with
+        | None ->
+          let (mj, first), middle = take_exn front r.middle in
+          if is_empty middle then
+            Major(mj,Double{first;middle = r.penultimate;last=r.last})
+          else
+            Major(mj, More { r with first; middle } )
+        | Some (x,first) -> Minor(x, More { r with first } )
+      end
+    | Double r -> match take front r.first with
+      | None -> Major(r.middle, Single r.last)
+      | Some(x,first) ->
         Minor(x, Double { r with first })
 
   let take_back = function
     | Single s ->
-      if is_empty s then Empty else
-        let x, r = take back s in Minor(x, Single r)
+      begin match take back s with
+        | None -> Empty
+        | Some(x,r) -> Minor(x, Single r)
+      end
     | More r ->
-      if is_empty r.last then
-        let (mj, last), middle = take back r.middle in
-        if is_empty middle then
-          Major(mj,Double{first=r.first;middle = r.penultimate;last})
-        else
-          Major(mj, More { r with last; middle } )
-      else
-        let x, last = take back r.last in
-        Minor(x, More { r with last } )
-    | Double r ->
-      if is_empty r.last then
-        Major (r.middle, Single r.first)
-      else
-        let x, last = take front r.last in
+      begin match take back r.last with
+        | None ->
+          let (mj, last), middle = take_exn back r.middle in
+          if is_empty middle then
+            Major(mj,Double{first=r.first ;middle = r.penultimate;last})
+          else
+            Major(mj, More { r with middle; last } )
+        | Some (x,last) -> Minor(x, More { r with last } )
+      end
+    | Double r -> match take back r.last with
+      | None -> Major(r.middle, Single r.first)
+      | Some(x,last) ->
         Minor(x, Double { r with last })
 
   let take_major_back = function
     | Single s -> Single empty, None, s
     | Double r -> Single r.first, Some r.middle, r.last
     | More r ->
-      let (p,last), middle = take back r.middle in
+      let (p,last), middle = take_exn back r.middle in
       let rest =
         if is_empty middle then
           Double {first=r.first; middle = p; last }
@@ -404,11 +409,11 @@ let last_box (context: open_box_on_the_left list) gr =
 let resolve_box bx sp stream =
   let rec resolve_box bx sp stream (lits: _ list) =
     match S.(take back) stream with
-    | Lit s, stream -> resolve_box bx sp stream (s :: lits)
-    | Break b, stream ->
+    | Some(Lit s, stream) -> resolve_box bx sp stream (s :: lits)
+    | Some(Break b, stream) ->
       let lit = translate_break b bx in
       resolve_box bx sp stream (lit :: lits)
-    | exception Not_found ->
+    | None ->
       debug "end coalesce, right:%d" sp.right;
       Box lits
   in
