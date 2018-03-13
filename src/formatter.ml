@@ -73,17 +73,14 @@ let rec eval:
           eval q iargs { ppf  with open_tags; tag_semantic }
       end
     | Close_any_tag :: q ->
-      begin match ppf.open_tags with
-        | NL.(Sem.Open_tag r :: tags) ->
-          close_tag r.with_box r.tag tags q iargs ppf
-      end
+      let NL.(Sem.Open_tag r :: tags) = ppf.open_tags in
+      close_tag r.with_box r.tag tags q iargs ppf
     | Close_tag ctag :: q ->
-      begin match ppf.open_tags with
-        | NL.( Sem.Open_tag {tag; _ } :: _ ) when Name tag <> Name ctag ->
-          raise (Mismatched_close {expected=tag;got=ctag})
-        | NL.( Sem.Open_tag {tag; with_box} :: tags ) ->
-          close_tag with_box tag tags q iargs ppf
-      end
+      let NL.( Sem.Open_tag {tag; with_box} :: tags ) = ppf.open_tags in
+      if  Name tag <> Name ctag then
+        raise (Mismatched_close {expected=tag;got=ctag})
+      else
+        close_tag with_box tag tags q iargs ppf
     | Point_tag (tag, tdata) :: q ->
       let ppf =
       begin match Sem.find_sem tag ppf.tag_semantic with
