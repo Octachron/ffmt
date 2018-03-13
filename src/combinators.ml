@@ -1,5 +1,6 @@
 (** Combinators for building printers *)
 
+open Defs
 open Format
 module E = Engine
 

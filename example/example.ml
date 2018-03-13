@@ -5,9 +5,9 @@ let fprintf = Formatter.fprintf
 
 let test s =
   let open Handwritten in
-  let b = Format.Point_tag (Format.Break, (1,0)) in
-  let fb n = Format.Point_tag(Format.Full_break, n) in
-  let b0: _ Format.tag * _ = Format.B, 0 in
+  let b = Format.Point_tag (Defs.Break, (1,0)) in
+  let fb n = Format.Point_tag(Defs.Full_break, n) in
+  let b0: _ Defs.tag * _ = Defs.B, 0 in
   let v = v 2 and hv = hv 0 in
   fprintf
     [ !<(box 1); l"123:";
@@ -95,13 +95,15 @@ let box_margin_2 = fprintf
     [%fmt "@{<hov 1>reset break here:@{<hov 0>new box@}@}"] []
 (* the second hov box is rejected to the left *)
 
-let rec nested indent n =
+let rec nested: 'n. int -> int -> ('a,'n) Formatter.t -> ('a,'n) Formatter.t =
+  fun indent n ppf ->
   if n = 0 then
-    fprintf [%fmt "@[<v indent>level 0@ [@ item@ item@ ]@]"] []
+    fprintf [%fmt "@[<v indent>level 0@ [@ item@ item@ ]@]"] [] ppf
   else
     fprintf
       [%fmt "@[<v indent>level %d@,[@,%t$1@,%t$1@,]@]"]
       [n; nested indent (n-1)]
+      ppf
 
 let fmt = [%fmt "%s$4 %d %d"]
 let fmt2 = fmt

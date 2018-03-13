@@ -1,11 +1,12 @@
-module F = Format
+module D = Defs
+module F = Formatter_def
 
 type open_tag = Formatter_def.open_tag =
-    Open_tag : {tag: 'any Format.tag; with_box: bool } -> open_tag
+    Open_tag : {tag: 'any D.tag; with_box: bool } -> open_tag
 
 type sem = Formatter_def.sem
 class type semclass = Formatter_def.semclass
-type 'a printer = 'a Formatter_def.t Format.captured
+type ('a,'b) printer = ('a,'b) F.t D.endo
 
 
 let rec find_sem:type any.
@@ -36,26 +37,26 @@ end
 let box =
   object(_:'self)
     constraint 'self = #semclass
-    method mine: type any. any F.tag -> bool =
+    method mine: type any. any D.tag -> bool =
       function
-      | F.B -> true | F.V -> true | F.HV -> true | F.HoV -> true | F.H -> true
-      | F.Break -> true | F.Full_break -> true
+      | D.B -> true | D.V -> true | D.HV -> true | D.HoV -> true | D.H -> true
+      | D.Break -> true | D.Full_break -> true
       | _ -> false
-    method box: type a. a F.tag -> a -> F.box option = fun tag i ->
+    method box: type a. a D.tag -> a -> D.box option = fun tag i ->
       match tag with
-      | F.B -> Some (B i)
-      | F.H -> Some H
-      | F.V -> Some (V i)
-      | F.HV -> Some (HV i)
-      | F.HoV -> Some (HoV i)
+      | D.B -> Some (B i)
+      | D.H -> Some H
+      | D.V -> Some (V i)
+      | D.HV -> Some (HV i)
+      | D.HoV -> Some (HoV i)
       | _ -> None
 
-    method break: type a. a F.tag -> a -> F.break option = fun tag i ->
+    method break: type a. a D.tag -> a -> D.break option = fun tag i ->
       match tag with
-      | F.Break -> let space, indent = i in Some (F.Break {space; indent})
-      | F.Full_break -> Some (F.Full_break i)
+      | D.Break -> let space, indent = i in Some (D.Break {space; indent})
+      | D.Full_break -> Some (D.Full_break i)
       | _ -> None
-    method open_printer: 'any 'final.  'any F.tag -> 'any
-      -> 'self * 'final printer = fun _ _ -> {< >}, id
-    method close_printer: 'final. 'self * 'final printer = {< >}, id
+    method open_printer: 'any 'b 'final.  'any D.tag -> 'any
+      -> 'self * ('final,'b) printer = fun _ _ -> {< >}, id
+    method close_printer: 'final 'b. 'self * ('final,'b) printer = {< >}, id
   end

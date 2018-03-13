@@ -1,16 +1,13 @@
 (** Formatting engine implementation *)
-
+open Defs
 let debug fmt = Printf.ifprintf stderr ("debug engine: "^^fmt ^^ "\n%!")
 
-let pp_box (ppf:out_channel): Format.box -> unit = function
+let pp_box (ppf:out_channel): box -> unit = function
   | V n -> Printf.fprintf ppf "V %d" n
   | HV n -> Printf.fprintf ppf "HV %d" n
   | HoV n -> Printf.fprintf ppf "HoV %d" n
   | B n -> Printf.fprintf ppf "B %d" n
   | H -> Printf.fprintf ppf "H"
-
-
-open Format
 
 type open_box_on_the_left = {indent:int;kind:box}
 

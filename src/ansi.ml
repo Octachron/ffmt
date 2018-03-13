@@ -1,8 +1,8 @@
 module F= Format
 
-type 'a t =  'a Format.tag = ..
+type 'a t =  'a Defs.tag = ..
 
-type 'a printer = 'a Tagsem.printer
+type ('a,'b) printer = ('a,'b) Tagsem.printer
 
 type base_color = Red | Blue | Green | Cyan | Magenta | White | Black | Yellow
 
@@ -142,15 +142,15 @@ let sem =
   object(_:'self)
     constraint 'self = #Tagsem.semclass
     val data = [default]
-    method mine: type any. any F.tag -> bool = function
+    method mine: type any. any Defs.tag -> bool = function
       | Fg -> true | Bg -> true | Underlined -> true
       | Overlined -> true | Bold -> true | Font -> true
       | Framed -> true | Crossed_out -> true
       | _ -> false
-    method box: type any. any F.tag -> any -> _ option = fun _ _ -> None
-    method break:  type any. any F.tag -> any -> _ option = fun _ _ -> None
+    method box: type any. any Defs.tag -> any -> _ option = fun _ _ -> None
+    method break:  type any. any Defs.tag -> any -> _ option = fun _ _ -> None
 
-    method open_printer: type a f. a F.tag -> a -> 'self * f printer =
+    method open_printer: type a f n. a Defs.tag -> a -> 'self * (f,n) printer =
       fun tag data_tag ->
         let prev = match data with
           | [] -> default
@@ -169,14 +169,14 @@ let sem =
         in
         {< data = st :: data >}, style (prev,st)
 
-    method close_printer: type f. 'self * f printer =
+    method close_printer: type f n. 'self * (f,n) printer =
       match data with
       | prev :: (st :: _ as data) -> {< data >}, style (prev,st)
       | [prev] -> {< data = [] >}, style (prev,default)
       | _ -> {< data = [] >}, null
   end
 
-let bold = (Bold: _ F.tag ), (Bold:boldness)
+let bold = (Bold: _ Defs.tag ), (Bold:boldness)
 let u = Underlined, ()
 let i = Font, Italic
 let fk = Font, Fraktur

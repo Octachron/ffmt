@@ -105,7 +105,7 @@ let rec ast stream =
   | BREAK {space;indent} ->
     let space = Ast_builder.Default.eint ~loc space
     and indent = Ast_builder.Default.eint ~loc indent in
-    [%expr Point_tag(Break, ([%e space], [%e indent])) ] @:: ast stream
+    [%expr Point_tag(Defs.Break, ([%e space], [%e indent])) ] @:: ast stream
   | IMPLICIT_FRAG "a" ->
     [%expr Captured ( Size.(S (S Z)),
                       fun { right = f :: x :: _; _ } -> f x ) ]
@@ -134,7 +134,7 @@ let rec ast stream =
     [%expr Captured (Size.Z, fun [%p pargs] -> [%e positional n arg] )]
     @:: ast stream
   | FULL_BREAK n ->
-    [%expr Point_tag(Full_break, [%e B.eint ~loc n])] @:: ast stream
+    [%expr Point_tag(Defs.Full_break, [%e B.eint ~loc n])] @:: ast stream
   | _ -> assert false
 
 
