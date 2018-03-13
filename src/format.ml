@@ -49,25 +49,30 @@ type _ tag +=
   | Full_break: int tag
 
 
-type (_,_,_) token =
-  | Literal: string -> ('list, 'pos * 'pos,'fmt) token
+type 'all default = 'all
+  constraint 'all = < list: 'a; pos:'b -> 'c; fmt:'d >
+
+type 'all simple = 'all
+  constraint 'all = < pos:'b -> 'b; .. > default
+
+type _ token =
+  | Literal: string -> _ simple token
   | Captured:
       ('right,'right2) Size.t *
-      ( ('list,'right) iargs -> 'fmt captured )
-      -> ('list,'right * 'right2 ,'fmt) token
-  | Open_tag: ('data tag * 'data) ->
-    ('list, 'pos * 'pos,'fmt) token
-  | Close_tag: _ tag -> ('list,'pos * 'pos,'fmt) token
-  | Close_any_tag: ('list,'pos * 'pos,'fmt) token
-  | Point_tag: ('data tag * 'data) ->
-    ('list, 'pos * 'pos,'fmt) token
+      ( ('list,'right) iargs -> 'fmt -> 'fmt )
+      -> <pos: 'right -> 'right2; list:'list; fmt:'fmt > default token
+  | Open_tag: ('data tag * 'data) -> _ simple token
+  | Close_tag: _ tag -> _ simple token
+  | Close_any_tag: _ simple token
+  | Point_tag: ('data tag * 'data) -> _ simple token
 
-type (_,_,_) format =
-  | []: ('any, 'right * 'right,'fmt) format
+
+type _ format =
+  | []: <all:'any; right:'right; tail:'right; fmt:'fmt> format
   | (::):
-      ('list, 'right * 'right2,'fmt) token
-      * ('list, 'b * 'right2,'fmt) format ->
-      ('list, 'b * 'right,'fmt) format
+      <list:'list; pos:'right -> 'right2; fmt:'fmt> token
+      * <all:'list; right:'right2; tail: 'tail; fmt: 'fmt> format ->
+      <all:'list; right:'right; tail:'tail; fmt:'fmt> format
 
 
 
@@ -87,10 +92,10 @@ let rec take: type free s e.  (s, e) Size.t -> (free,s) iargs ->
     | Size.Z, _ -> iargs
     | Size.S k, _ :: right -> take k { iargs with right }
 
-let rec (^^): type left right b free fmt.
-  (free,right * left,fmt) format -> (*(left,right) Size.t ->*)
-  (free,b * right,fmt) format ->
-  (free, b * left,fmt) format =
+let rec (^^): type left right b a fmt.
+  <all:a; right:left;  tail:right; fmt:fmt> format ->
+  <all:a; right:right; tail:b;     fmt:fmt> format ->
+  <all:a; right:left;  tail:b;     fmt:fmt> format =
   fun l r -> match l with
     | [] -> r
     | Captured(k,f) :: q -> Captured(k,f) :: (q ^^ r)

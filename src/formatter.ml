@@ -43,7 +43,7 @@ type exn += Mismatched_close: {expected:'any Format.tag; got:'other Format.tag}
 
 let rec eval:
   type free b right final.
-  (free,b * right, final t) Format.format
+  <all:free; right:right; tail:b; fmt:final t> Format.format
   -> (free,right) Format.iargs
   -> final t -> final t  =
   let open Format in
@@ -104,7 +104,7 @@ let rec eval:
 
 and close_tag: type any free b right final.
   bool -> any Format.tag -> Sem.open_tag list
-  -> (free,b * right, final t) Format.format
+  -> <all:free; right:right; tail:b; fmt:final t> Format.format
   -> (free,right) Format.iargs
   -> final t -> final t  = fun with_box tag open_tags q iargs ppf ->
   match Sem.find_sem tag ppf.tag_semantic with
