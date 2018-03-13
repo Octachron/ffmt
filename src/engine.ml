@@ -20,7 +20,7 @@ type resolved_lit =
   | Newline of int
   | Box of resolved_lit list
 type suspended_lit =
-    Break of break_data | Lit of resolved_lit | Open_box of box
+    Break of break_data | Lit of resolved_lit
 
 module S = struct
   module M= Map.Make(struct
@@ -50,7 +50,108 @@ module S = struct
 
   let cardinal = M.cardinal
   let empty = M.empty
+  let is_empty = M.is_empty
   let fold = M.fold
+
+  type ('a,'b) graded =
+    | Single of 'a t
+    | Double of {first:'a t ; middle:'b; last:'a t}
+    | More of { first:'a t; middle:('b * 'a t) t; penultimate:'b; last:'a t}
+
+  type ('a,'b) answer =
+    | Minor of 'a * ('a,'b) graded
+    | Major of 'b * ('a,'b) graded
+    | Empty
+
+  let take_front = function
+    | Single s ->
+      if is_empty s then Empty else
+        let x, r = take front s in Minor(x, Single r)
+    | More r ->
+      if is_empty r.first then
+        let (mj, first), middle = take front r.middle in
+        if is_empty middle then
+          Major(mj,Double{first;middle = r.penultimate;last=r.last})
+        else
+          Major(mj, More { r with first; middle } )
+      else
+        let x, first = take front r.first in
+        Minor(x, More { r with first } )
+    | Double r ->
+      if is_empty r.first then
+        Major (r.middle, Single r.last)
+      else
+        let x, first = take front r.first in
+        Minor(x, Double { r with first })
+
+  let take_back = function
+    | Single s ->
+      if is_empty s then Empty else
+        let x, r = take back s in Minor(x, Single r)
+    | More r ->
+      if is_empty r.last then
+        let (mj, last), middle = take back r.middle in
+        if is_empty middle then
+          Major(mj,Double{first=r.first;middle = r.penultimate;last})
+        else
+          Major(mj, More { r with last; middle } )
+      else
+        let x, last = take back r.last in
+        Minor(x, More { r with last } )
+    | Double r ->
+      if is_empty r.last then
+        Major (r.middle, Single r.first)
+      else
+        let x, last = take front r.last in
+        Minor(x, Double { r with last })
+
+  let take_major_back = function
+    | Single s -> Single empty, None, s
+    | Double r -> Single r.first, Some r.middle, r.last
+    | More r ->
+      let (p,last), middle = take back r.middle in
+      let rest =
+        if is_empty middle then
+          Double {first=r.first; middle = p; last }
+        else
+          More { r with middle; last; penultimate = p } in
+      rest, Some r.penultimate, r.last
+
+  let push_min (minor:'a): ('a,'b) graded -> ('a,'b) graded = function
+    | Single l -> Single (push_back minor l)
+    | Double r -> Double { r with last = push_back minor r.last }
+    | More r -> More { r with last = push_back minor r.last }
+
+  let push_maj major = function
+    | Single first -> Double { first; middle=major; last=empty}
+    | Double r ->
+      More { first= r.first; middle = push_back (r.middle, r.last) empty;
+             penultimate = major; last = empty }
+    | More r ->
+      More { r with middle = push_back (r.penultimate, r.last) empty;
+             penultimate = major; last = empty }
+
+  let fold_minor f x acc =
+    fold (fun _key x -> f (`Minor x) ) x acc
+  let fold f gr acc = match gr with
+    | Single l -> fold_minor f  l acc
+    | Double r ->
+      acc |> fold_minor f r.first
+      |> f (`Major r.middle)
+      |> fold_minor f r.last
+    | More r ->
+      acc |> fold_minor f r.first
+      |> fold
+        (fun _key (x,s) acc -> acc |> f (`Major x) |> fold_minor f s )
+        r.middle
+      |> f (`Major r.penultimate)
+      |> fold_minor f r.last
+
+  let empty = Single empty
+  let is_empty = function
+    | Single s -> is_empty s
+    | _ -> false
+
 end
 
 type context =
@@ -72,7 +173,7 @@ type suspended = {
   break:break_data;
   (** We are in the suspended mode because we don't know how to interpret
       this break yet *)
-  after_block: suspended_lit S.t;
+  after: (suspended_lit, box) S.graded;
   (** we already have computed these token after the block *)
   right: int (** and we are currently at this position < margin *);
 }
@@ -86,12 +187,11 @@ type status =
   (**We are blocked at an ambiguous break, waiting for the decision on
      how to interpret it *)
 
-let secondary_box str =
-  S.M.exists (fun _ -> function Open_box _ -> true | _ -> false) str
-
+let secondary_box = (function S.Single _ -> false | _ -> true)
+(*
 let only_boxes str =
   S.M.for_all (fun _ -> function Open_box _ -> true | _ -> false) str
-
+*)
 
 type 'a t = {
   context: open_box_on_the_left list;
@@ -169,24 +269,23 @@ let rec suspended_lit_len phy indent current: _ list -> _  = function
 
 let is_vertical (x: box) = match x with V _ -> true | _ -> false
 
-let suspended_len_tok phy direct = function
-  | Break b -> begin
+let suspended_len_tok phy tok direct = match tok with
+  | `Minor Break b -> begin
       match direct.kind with
       | V more -> { direct with current = direct.indent + more + b.indent }
       | _ ->
         debug "break %d ⇒ %d" direct.current (direct.current + b.space);
         { direct with current = direct.current + b.space }
     end
-  | Open_box v -> { direct with indent = direct.current; kind = v }
-  | Lit l ->
+  | `Major v -> { direct with indent = direct.current; kind = v }
+  | `Minor Lit l ->
     let current =
         suspended_lit_len phy direct.indent direct.current [l] in
     { direct with current}
 
 let suspended_len phy stream direct =
   let all =
-    S.fold (fun _key tok direct -> suspended_len_tok phy direct tok)
-      stream direct in
+    S.fold (suspended_len_tok phy) stream direct in
   debug "reevaluted size: %d ⇒ %d "direct.current all.current;
   all.current
 
@@ -204,8 +303,8 @@ let commit_resolved_literal max_indent lits c =
   List.fold_left elt c lits
 
 let rec advance_to_next_ambiguity geom context stream c =
-  match S.(take front) stream with
-  | Open_box b, rest ->
+  match S.take_front stream with
+  | Major (b, rest) ->
     debug "advance open box %a" pp_box b;
     (* When we meet a box without any ambiguity on its position,
        we put the current box on the left stack, and focus on this
@@ -215,34 +314,34 @@ let rec advance_to_next_ambiguity geom context stream c =
       { kind = c.kind; indent = c.indent } :: context in
     advance_to_next_ambiguity geom context rest
       { c with indent; kind = b }
-  | Break b, rest ->
+  | Minor(Break b, rest) ->
     let status =
       Suspended {
                   break = b;
-                  after_block = rest;
+                  after = rest;
                   right = suspended_len c.phy stream c;
                 } in
     debug "Advance up to new break, stop at %d" c.current;
     make context status c
-  | Lit s, rest ->
+  | Minor(Lit s, rest) ->
     debug "advance lit";
        c
     |> commit_resolved_literal (max_indent geom) [s]
     |> advance_to_next_ambiguity geom context rest
-  | exception Not_found ->
+  | Empty ->
     debug "empty stream: stop advance at %d" c.current;
     make context Direct c
 
 let rec advance_to_next_box max_indent stream c =
-  match S.(take front) stream with
-  | Open_box b, stream -> { c with kind = b }
-  | Break b, stream ->
+  match S.take_front stream with
+  | Major(b, stream) -> { c with kind = b }
+  | Minor(Break b, stream) ->
     c |> phyline max_indent b.indent
     |> advance_to_next_box max_indent stream
-  | Lit s, stream ->
+  | Minor(Lit s, stream) ->
     c |> commit_resolved_literal max_indent [s]
       |> advance_to_next_box max_indent stream
-  | exception Not_found -> c
+  | Empty -> c
 
 let advance_to_next_ambiguity geom ctx stream c =
   debug "Advance up to new break, start at %d" c.current;
@@ -253,10 +352,10 @@ let actualize_break geom context sd c =
   match c.kind with
   | HV n ->
     { c with kind = V n }
-    |> advance_to_next_box (max_indent geom) sd.after_block
+    |> advance_to_next_box (max_indent geom) sd.after
     |> make context Direct
   | b ->
-    advance_to_next_ambiguity geom context sd.after_block c
+    advance_to_next_ambiguity geom context sd.after c
 
 
 let rec string geom s ppf =
@@ -273,8 +372,8 @@ let rec string geom s ppf =
       |> string geom s
     else
       ( debug "suspending «%s»" s;
-        let after_block = S.push_back (Lit (Str s)) sd.after_block in
-        { ppf with status = Suspended { sd with after_block; right } }
+        let after = S.push_min (Lit (Str s)) sd.after in
+        { ppf with status = Suspended { sd with after; right } }
      )
 
 
@@ -293,42 +392,41 @@ let reactivate position (context: open_box_on_the_left list) =
 let translate_break (b:break_data) box =
   if is_vertical box then Newline (b.indent + box_indent box) else Space b.space
 
-let last_box (context: open_box_on_the_left list) str =
-  let rec search mx =
-    match S.M.find_opt mx str with
-    | Some Open_box b -> b
-    | Some _ -> search (mx - 1)
-    | None -> match context with
-      | [] -> H
-      | a :: _ -> a.kind in
-  search (S.max str)
+(*
+let last_box (context: open_box_on_the_left list) gr =
+  match S.take_major_back gr with
+  | Some b, c -> b, c
+  | None, rest ->
+    match context with
+    | [] -> (H: Format.box), rest
+    | a :: ctx -> a.kind, rest*)
 
-
-let rec resolve_box bx sp stream lits =
-  match S.(take back) stream with
-  | Open_box b, stream ->
-    debug "end coalesce, right:%d" sp.right;
-    Box lits, Some stream
-  | Lit s, stream -> resolve_box bx sp stream (s :: lits)
-  | Break b, stream ->
-    let lit = translate_break b bx in
-    resolve_box bx sp stream (lit :: lits)
-  | exception Not_found ->
-      let lit = translate_break sp.break bx in
-      Box (lit :: lits), None
+let resolve_box bx sp stream =
+  let rec resolve_box bx sp stream (lits: _ list) =
+    match S.(take back) stream with
+    | Lit s, stream -> resolve_box bx sp stream (s :: lits)
+    | Break b, stream ->
+      let lit = translate_break b bx in
+      resolve_box bx sp stream (lit :: lits)
+    | exception Not_found ->
+      debug "end coalesce, right:%d" sp.right;
+      Box lits
+  in
+  debug "resolving %a box" pp_box bx;
+  resolve_box bx sp stream []
 
 let coalesce geom context sp c =
-  let bx = last_box context sp.after_block in
-  let lit, rest = resolve_box bx sp sp.after_block [] in
-  match rest with
-  | None ->
+  match S.take_major_back sp.after with
+  | rest, Some b, last_box_content ->
+    let lit = resolve_box b sp last_box_content in
+    let after = S.push_min (Lit lit) rest in
+    make context (Suspended {sp with after}) c
+  | rest, None, last_box_content ->
     let c, context = reactivate c context in
+    let lit = resolve_box c.kind sp last_box_content in
     c
     |> commit_resolved_literal (max_indent geom) [lit]
     |> make context Direct
-  | Some rest ->
-    let after_block = S.push_back (Lit lit) rest  in
-    make context (Suspended { sp with after_block }) c
 
 let close_box geom ppf =
   match ppf.status with
@@ -363,13 +461,13 @@ let rec break geom br (ppf: _ t) =
           else
             let status =
               Suspended { break = br;
-                          after_block = S.empty;
+                          after = S.empty;
                           right = c.current + br.space;
                         } in
             { ppf with status } end
   | Suspended sd ->
     let right = sd.right + br.space in
-    let after_block = S.push_back (Break br) sd.after_block  in
+    let after = S.push_min (Break br) sd.after  in
     debug "waiting for break resolution at %d" c.current;
     let b = c.kind in
     if right > geom.G.margin
@@ -379,14 +477,14 @@ let rec break geom br (ppf: _ t) =
       |> actualize_break geom ppf.context sd
       |> break geom br
     else match c.kind with
-    | HoV _ | B _ when not (secondary_box sd.after_block) ->
+    | HoV _ | B _ when not (secondary_box after) ->
          c
       |> physpace sd.break.space
-      |> advance_to_next_ambiguity geom ppf.context after_block
+      |> advance_to_next_ambiguity geom ppf.context after
     | _ ->
-      let right = suspended_len c.phy after_block c in
+      let right = suspended_len c.phy after c in
       debug "break in not hov ⇒ %d" right;
-      { ppf with status = Suspended { sd with after_block; right  } }
+      { ppf with status = Suspended { sd with after; right  } }
 
 
 let rec full_break geom br (ppf:_ t) =
@@ -396,9 +494,9 @@ let rec full_break geom br (ppf:_ t) =
     pos |> newline geom br |> update ppf
   | Suspended sd ->
     match pos.kind with
-    | HoV _ | B _ when not (secondary_box sd.after_block) ->
+    | HoV _ | B _ when not (secondary_box sd.after) ->
       pos |> physpace sd.break.space
-      |> advance_to_next_ambiguity geom ppf.context sd.after_block
+      |> advance_to_next_ambiguity geom ppf.context sd.after
       |> full_break geom br
     | _ ->
       debug "breaking with a full break at %d" pos.current;
@@ -421,7 +519,7 @@ let rec open_box geom b (ppf: _ t) =
       pos |> actualize_break geom ppf.context s |> open_box geom b
     else
       let status = Suspended
-          { s with after_block = S.push_back (Open_box b) s.after_block } in
+          { s with after = S.push_maj b s.after } in
       { ppf with status }
 
 type ('a,'b) prim = Geometry.t -> 'a -> 'b t -> 'b t
