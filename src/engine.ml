@@ -22,6 +22,7 @@ type resolved_lit =
 type suspended_lit =
     Break of break_data | Lit of resolved_lit
 
+(*
 module S = struct
   module M= Map.Make(struct
       type t = int
@@ -58,106 +59,11 @@ module S = struct
   let empty = M.empty
   let fold = M.fold
 
-  type ('a,'b) graded =
-    | Single of 'a t
-    | Double of {first:'a t ; middle:'b; last:'a t}
-    | More of { first:'a t; middle:('b * 'a t) t; penultimate:'b; last:'a t}
-
-  type ('a,'b) answer =
-    | Minor of 'a * ('a,'b) graded
-    | Major of 'b * ('a,'b) graded
-    | Empty
-
-  let take_front = function
-    | Single s ->
-      begin match take front s with
-        | None -> Empty
-        | Some(x,r) -> Minor(x, Single r)
-      end
-    | More r ->
-      begin match take front r.first with
-        | None ->
-          let (mj, first), middle = take_exn front r.middle in
-          if is_empty middle then
-            Major(mj,Double{first;middle = r.penultimate;last=r.last})
-          else
-            Major(mj, More { r with first; middle } )
-        | Some (x,first) -> Minor(x, More { r with first } )
-      end
-    | Double r -> match take front r.first with
-      | None -> Major(r.middle, Single r.last)
-      | Some(x,first) ->
-        Minor(x, Double { r with first })
-
-  let take_back = function
-    | Single s ->
-      begin match take back s with
-        | None -> Empty
-        | Some(x,r) -> Minor(x, Single r)
-      end
-    | More r ->
-      begin match take back r.last with
-        | None ->
-          let (mj, last), middle = take_exn back r.middle in
-          if is_empty middle then
-            Major(mj,Double{first=r.first ;middle = r.penultimate;last})
-          else
-            Major(mj, More { r with middle; last } )
-        | Some (x,last) -> Minor(x, More { r with last } )
-      end
-    | Double r -> match take back r.last with
-      | None -> Major(r.middle, Single r.first)
-      | Some(x,last) ->
-        Minor(x, Double { r with last })
-
-  let take_major_back = function
-    | Single s -> Single empty, None, s
-    | Double r -> Single r.first, Some r.middle, r.last
-    | More r ->
-      let (p,last), middle = take_exn back r.middle in
-      let rest =
-        if is_empty middle then
-          Double {first=r.first; middle = p; last }
-        else
-          More { r with middle; last; penultimate = p } in
-      rest, Some r.penultimate, r.last
-
-  let push_min (minor:'a): ('a,'b) graded -> ('a,'b) graded = function
-    | Single l -> Single (push_back minor l)
-    | Double r -> Double { r with last = push_back minor r.last }
-    | More r -> More { r with last = push_back minor r.last }
-
-  let push_maj major = function
-    | Single first -> Double { first; middle=major; last=empty}
-    | Double r ->
-      More { first= r.first; middle = push_back (r.middle, r.last) empty;
-             penultimate = major; last = empty }
-    | More r ->
-      More { r with middle = push_back (r.penultimate, r.last) empty;
-             penultimate = major; last = empty }
-
-  let fold_minor f x acc =
-    fold (fun _key x -> f (`Minor x) ) x acc
-  let fold f gr acc = match gr with
-    | Single l -> fold_minor f  l acc
-    | Double r ->
-      acc |> fold_minor f r.first
-      |> f (`Major r.middle)
-      |> fold_minor f r.last
-    | More r ->
-      acc |> fold_minor f r.first
-      |> fold
-        (fun _key (x,s) acc -> acc |> f (`Major x) |> fold_minor f s )
-        r.middle
-      |> f (`Major r.penultimate)
-      |> fold_minor f r.last
-
-  let empty = Single empty
-  let is_empty = function
-    | Single s -> is_empty s
-    | _ -> false
 
 end
+*)
+
+module Q = Bigraded_fqueue
 
 type context =
   { indent: int;
@@ -178,7 +84,7 @@ type suspended = {
   break:break_data;
   (** We are in the suspended mode because we don't know how to interpret
       this break yet *)
-  after: (suspended_lit, box) S.graded;
+  after: (suspended_lit, box) Bigraded_fqueue.t;
   (** we already have computed these token after the block *)
   right: int (** and we are currently at this position < margin *);
 }
@@ -192,7 +98,6 @@ type status =
   (**We are blocked at an ambiguous break, waiting for the decision on
      how to interpret it *)
 
-let secondary_box = (function S.Single _ -> false | _ -> true)
 (*
 let only_boxes str =
   S.M.for_all (fun _ -> function Open_box _ -> true | _ -> false) str
@@ -290,7 +195,7 @@ let suspended_len_tok phy tok direct = match tok with
 
 let suspended_len phy stream direct =
   let all =
-    S.fold (suspended_len_tok phy) stream direct in
+    Q.fold (suspended_len_tok phy) stream direct in
   debug "reevaluted size: %d ⇒ %d "direct.current all.current;
   all.current
 
@@ -308,7 +213,7 @@ let commit_resolved_literal max_indent lits c =
   List.fold_left elt c lits
 
 let rec advance_to_next_ambiguity geom context stream c =
-  match S.take_front stream with
+  match Q.take_front stream with
   | Major (b, rest) ->
     debug "advance open box %a" pp_box b;
     (* When we meet a box without any ambiguity on its position,
@@ -338,7 +243,7 @@ let rec advance_to_next_ambiguity geom context stream c =
     make context Direct c
 
 let rec advance_to_next_box max_indent stream c =
-  match S.take_front stream with
+  match Q.take_front stream with
   | Major(b, stream) -> { c with kind = b }
   | Minor(Break b, stream) ->
     c |> phyline max_indent b.indent
@@ -377,7 +282,7 @@ let rec string geom s ppf =
       |> string geom s
     else
       ( debug "suspending «%s»" s;
-        let after = S.push_min (Lit (Str s)) sd.after in
+        let after = Q.push_min (Lit (Str s)) sd.after in
         { ppf with status = Suspended { sd with after; right } }
      )
 
@@ -388,7 +293,7 @@ let reactivate position (context: open_box_on_the_left list) =
      | [] ->
        debug "reopened empty";
        { position with indent = 0; kind = H }, ([]: _ list)
-     (** empty box *)
+     (* empty box *)
      | {kind;indent} :: q ->
        debug "Reopened %a ⇒ %d" pp_box kind indent;
        { position with indent; kind }, q
@@ -407,24 +312,18 @@ let last_box (context: open_box_on_the_left list) gr =
     | a :: ctx -> a.kind, rest*)
 
 let resolve_box bx sp stream =
-  let rec resolve_box bx sp stream (lits: _ list) =
-    match S.(take back) stream with
-    | Some(Lit s, stream) -> resolve_box bx sp stream (s :: lits)
-    | Some(Break b, stream) ->
-      let lit = translate_break b bx in
-      resolve_box bx sp stream (lit :: lits)
-    | None ->
-      debug "end coalesce, right:%d" sp.right;
-      Box lits
-  in
   debug "resolving %a box" pp_box bx;
-  resolve_box bx sp stream []
+  let translate bx = function
+    | Lit s -> s
+    | Break b -> translate_break b bx in
+  let x = stream |> Sequence.map (translate bx) |> Sequence.to_list in
+  Box x
 
 let coalesce geom context sp c =
-  match S.take_major_back sp.after with
+  match Q.take_major_back sp.after with
   | rest, Some b, last_box_content ->
     let lit = resolve_box b sp last_box_content in
-    let after = S.push_min (Lit lit) rest in
+    let after = Q.push_min (Lit lit) rest in
     make context (Suspended {sp with after}) c
   | rest, None, last_box_content ->
     let c, context = reactivate c context in
@@ -466,13 +365,13 @@ let rec break geom br (ppf: _ t) =
           else
             let status =
               Suspended { break = br;
-                          after = S.empty;
+                          after = Q.empty;
                           right = c.current + br.space;
                         } in
             { ppf with status } end
   | Suspended sd ->
     let right = sd.right + br.space in
-    let after = S.push_min (Break br) sd.after  in
+    let after = Q.push_min (Break br) sd.after  in
     debug "waiting for break resolution at %d" c.current;
     let b = c.kind in
     if right > geom.G.margin
@@ -482,7 +381,7 @@ let rec break geom br (ppf: _ t) =
       |> actualize_break geom ppf.context sd
       |> break geom br
     else match c.kind with
-    | HoV _ | B _ when not (secondary_box after) ->
+    | HoV _ | B _ when not (Q.secondary after) ->
          c
       |> physpace sd.break.space
       |> advance_to_next_ambiguity geom ppf.context after
@@ -499,7 +398,7 @@ let rec full_break geom br (ppf:_ t) =
     pos |> newline geom br |> update ppf
   | Suspended sd ->
     match pos.kind with
-    | HoV _ | B _ when not (secondary_box sd.after) ->
+    | HoV _ | B _ when not (Q.secondary sd.after) ->
       pos |> physpace sd.break.space
       |> advance_to_next_ambiguity geom ppf.context sd.after
       |> full_break geom br
@@ -524,7 +423,7 @@ let rec open_box geom b (ppf: _ t) =
       pos |> actualize_break geom ppf.context s |> open_box geom b
     else
       let status = Suspended
-          { s with after = S.push_maj b s.after } in
+          { s with after = Q.push_maj b s.after } in
       { ppf with status }
 
 type ('a,'b) prim = Geometry.t -> 'a -> 'b t -> 'b t
