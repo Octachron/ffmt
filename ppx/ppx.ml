@@ -58,11 +58,13 @@ let ge x = B.evar (escaped x)
 let gp x = B.pvar (escaped x)
 
 
-let contextualize iarg n s =
+let contextualize iarg explicit n s =
   let rec args last k =
     if k = last then
       if iarg then ["_; _ } as iargs)"] else ["_;_}"]
-    else ["x"; string_of_int k; "::"] @ args last (k+1) in
+    else
+      (if List.mem k explicit then [] else ["_"]) @
+      ["x"; string_of_int k; "::"] @ args last (k+1) in
   String.concat "" @@
   "Captured(" :: nat' n :: ", "
   ::"fun " :: (if iarg then "(" else "")
@@ -75,16 +77,18 @@ let rec snat = function
 
 let frag loc s=
   let s = stream Lex.subfrags loc s in
-  let rec rewrite with_iarg n ls = let tok, _loc = s () in
+  let rec rewrite with_iarg explicit n ls = let tok, _loc = s () in
     match tok with
-    | Lex.EOF -> contextualize with_iarg n @@ List.rev @@ ls
+    | Lex.EOF -> contextualize with_iarg explicit n @@ List.rev @@ ls
     | IMPLICIT_POS_ARG pos ->
-      rewrite true n @@ "))" :: (snat pos) :: "(nth iargs (" :: ls
+      rewrite true explicit n
+      @@ "))" :: (snat pos) :: "(nth iargs (" :: ls
     | IMPLICIT_ARG skip ->
-      rewrite with_iarg (n+skip+1) @@ ("x" ^ string_of_int(n + skip)) :: ls
-    | TEXT t -> rewrite with_iarg n @@ t :: ls
-    | _ -> rewrite with_iarg n ls in
-  subparser loc @@ rewrite false 0 []
+      rewrite with_iarg ((n+skip)::explicit ) (n+skip+1)
+      @@ ("x" ^ string_of_int(n + skip)) :: ls
+    | TEXT t -> rewrite with_iarg explicit n @@ t :: ls
+    | _ -> rewrite with_iarg explicit n ls in
+  subparser loc @@ rewrite false [] 0 []
 
 let rec ast stream =
   let tok, loc = stream () in

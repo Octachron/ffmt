@@ -4,4 +4,4 @@ lib:
 	jbuilder build --dev @install
 
 runtest: lib
-	jbuilder runtest --force
+	jbuilder runtest --dev --force
