@@ -19,47 +19,6 @@ type resolved_lit =
 type suspended_lit =
     Break of break_data | Lit of resolved_lit
 
-(*
-module S = struct
-  module M= Map.Make(struct
-      type t = int
-      let compare (x:int) (y:int) = compare x y
-    end)
-
-  type 'a t = 'a M.t
-  let front = M.min_binding
-  let back = M.max_binding
-
-  let max x = fst @@ back x
-  let min x = fst @@ front x
-  let last x = snd @@ back x
-  let first x = snd @@ front x
-
-  let push_back x m =
-    if M.cardinal m = 0 then
-      M.add 0 x m
-    else
-      let max = max m in
-      M.add (max +1) x m
-
-  let is_empty = M.is_empty
-
-  let take_exn pos m =
-    let max, elt =  pos m in
-    (elt, M.remove max m)
-
-  let take pos m =
-    if is_empty m then None
-    else Some(take_exn pos m)
-
-  let cardinal = M.cardinal
-  let empty = M.empty
-  let fold = M.fold
-
-
-end
-*)
-
 module Q = Bigraded_fqueue
 
 type 'a position =
@@ -89,11 +48,6 @@ type status =
   (**We are blocked at an ambiguous break, waiting for the decision on
      how to interpret it *)
 
-(*
-let only_boxes str =
-  S.M.for_all (fun _ -> function Open_box _ -> true | _ -> false) str
-*)
-
 type 'a t = {
   context: open_box_on_the_left list;
   position: 'a position;
@@ -106,7 +60,6 @@ let update ppf position = make ppf.context ppf.status position
 
 module G = Geometry
 module I = Geometry.Indentation
-
 
 let box_indent: box -> int = function
   | B n | HV n | HoV n | V n-> n
@@ -140,11 +93,6 @@ let newline geom more pos =
 let physpace  n pos =
   { pos with phy = pos.phy#space n;
     current = n + pos.current }
-(*
-let space n d ppf =
-  { ppf with status = Direct (physpace n d ppf.logical.phy) }
-*)
-
 let phystring s pos =
   let r = Raw.all s in
   debug "direct printing «%s», %d ⇒ %d" s pos.current
@@ -292,15 +240,6 @@ let reactivate position (context: open_box_on_the_left list) =
 let translate_break (b:break_data) box =
   if is_vertical box then Newline (b.indent + box_indent box) else Space b.space
 
-(*
-let last_box (context: open_box_on_the_left list) gr =
-  match S.take_major_back gr with
-  | Some b, c -> b, c
-  | None, rest ->
-    match context with
-    | [] -> (H: Format.box), rest
-    | a :: ctx -> a.kind, rest*)
-
 let resolve_box bx stream =
   debug "resolving %a box" pp_box bx;
   let translate bx = function
@@ -423,15 +362,4 @@ let start phy =
     context = [] }
 
 let close_box geom () = close_box geom
-
 let flush (ppf: _ t) = ppf.position.phy#flush
-(*
-type 'a prim = Geometry.t -> Raw.t -> 'a -> t -> t
-let lift f geom phy = f {geom;phy}
-
-let string = lift string
-let break = lift  break
-let full_break = lift full_break
-let close_box geom phy ()  =  close_box {geom;phy}
-let open_box = lift open_box
-*)

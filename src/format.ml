@@ -2,7 +2,6 @@
 module Def = Formatter_def
 type ('a,'b) fmt = ('a,'b) Formatter_def.t
 
-
 type (_,_) index =
   | Z: ('elt, 'elt -> _ ) index
   | S: ('elt, 'list) index -> ('elt, 'any -> 'list) index
@@ -66,9 +65,6 @@ type _ format =
     ->
     <all:'list; right:'right; tail:'tail; fmt:'fmt;
      tag_count:'a -> 'c > format
-
-
-
 
 let rec nth: type elt a. (elt,a) index -> a args -> elt =
   fun n  args ->
