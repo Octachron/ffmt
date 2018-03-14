@@ -81,6 +81,11 @@ let push_maj major = function
     More { r with middle = Q.singleton (r.penultimate, r.last) ;
                   penultimate = major; last = Q.empty }
 
+let peek_major_back = function
+  | Single _ -> None
+  | Double r -> Some r.middle
+  | More r -> Some r.penultimate
+
 let fold_minor f x acc =
   Q.fold (fun acc x -> f x acc ) acc x
 let fold (type b) (f: _ -> b -> b) (g: _ -> b -> b) gr acc = match gr with

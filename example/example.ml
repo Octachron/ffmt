@@ -68,6 +68,12 @@ let explain got expected ppf =
           [got; sub got; sub expected;!i] ppf
   else ppf
 
+let semicolumn =
+  fprintf
+    [%fmt "@[<hov 0>@[<v 0>le@,la@,les@]@ \
+           @[<v 0>der@,die@,die@]@ @[<v 0>the@,the@,the@]@]"]
+    []
+
 let exec (name,x,expected) =
   let fmt = x @@ buffer () in
   let res = Formatter.flush fmt in
@@ -117,8 +123,15 @@ let break_all =
 
 let boxes_in_hv =
   fprintf
-    [%fmt "@[<hv 0>x@ y@ z@ w@ @[<hov 0>a@ b@ c@ d@ e@]@ 1@ 2@ 3@]"]
+    [%fmt "@[<hv 0>か@ ら@ ま@ や@ @[<hov 0>ひ@ き@ し@ み@]@ こ@ の@ も@]"]
     []
+
+
+let hv_boxes_in_hv =
+  fprintf
+    [%fmt "@[<hv 0>ꙮ@ 05@ @[<hv 0>08@ 11@ 14@ 17@ 20+@]@ в@ у@ щ@]"]
+    []
+
 
 let () =
   List.iter exec [
@@ -213,12 +226,27 @@ t|};
   {x:5;y:6}
   {x:7;y:8}|};
 "Nested boxes in hv boxes", boxes_in_hv,
-{|x
-y
-z
-w
-a b c d e
-1
-2
-3|}
+{|か
+ら
+ま
+や
+ひ き し み
+こ
+の
+も|};
+"Hv boxes in hv boxes", hv_boxes_in_hv,
+{|ꙮ
+05
+08 11 14 17 20+
+в
+у
+щ|};
+"Semi-column", semicolumn,
+{|le
+la
+les der
+    die
+    die the
+        the
+        the|}
 ]
