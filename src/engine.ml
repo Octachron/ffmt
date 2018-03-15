@@ -47,7 +47,14 @@ module Move = struct
   let decrease k x =
     let r = match x with
     | Relative n -> Relative (n - k)
-    | x -> x in
+    | Absolute _ as a -> a in
+  debug "decreasing %a by %d yields %a" pp x k pp r;
+  r
+
+  let decrease_all k x =
+    let r = match x with
+    | Relative n -> Relative (n - k)
+    | Absolute a -> Absolute { a with indent = a.indent - k } in
   debug "decreasing %a by %d yields %a" pp x k pp r;
   r
 
@@ -146,7 +153,7 @@ let direct_string context c s  =
 
 let rec suspended_lit_len phy indent current: _ list -> _  = function
   | Str s :: q ->
-    debug "suspended lit str %s %a ⇒ %a" s Move.pp current
+    debug "suspended lit str «%s» %a ⇒ %a" s Move.pp current
       Move.pp Move.(current +> phy#len (Raw.all s));
     suspended_lit_len phy indent Move.(current +> phy#len (Raw.all s)) q
   | Newline more :: q->
@@ -175,7 +182,8 @@ let suspended_len_tok phy tok ((kind:box),indent,current) =
   | Break b ->
     match kind with
     | V more ->
-      debug "resolved V box break %a ⇒ %a" Move.pp current Move.pp
+      debug "resolved V box break i:%d m:%d bi:%d, %a ⇒ %a"
+        indent more b.indent Move.pp current Move.pp
         Move.( current + absolute indent +> more +> b.indent );
       Move.(current + absolute indent +> more +> b.indent)
     | _ ->
@@ -233,22 +241,38 @@ let rec advance_to_next_ambiguity geom context stream right c =
       { kind = c.kind; indent = c.indent } :: context in
     advance_to_next_ambiguity geom context rest right
       { c with indent; kind = b }
-  | Minor(Break b, rest) ->
-    let status =
-      let rright = suspended_len c.phy stream 0 c in
-      debug "expected right point: %a; got: %a%!" Move.pp right Move.pp rright;
-      assert (right = rright );
-      Suspended {
-                  break = b;
-                  after = rest;
-                  right;
-                } in
-    debug "Advance up to new break, stop at %d" c.current;
-    make context status c
+  | Minor(Break b, after) ->
+    debug "anam: minor break: right at start: %a" Move.pp right;
+    begin
+      match c.kind with
+      | V _ -> (* this happens with suspended V box nested inside other boxes *)
+        let right = Move.commit_line 1 right in
+        c |> phyline (max_indent geom) b.indent
+        |> advance_to_next_ambiguity geom context after right
+      | _ ->
+        let status =
+          let right =
+            match c.kind with V _ -> Move.commit_line 1 right | _ -> right in
+          let rright = suspended_len c.phy after b.space c in
+          debug "anam: expected right point: %a; got: %a%!"
+            Move.pp right Move.pp rright;
+          assert (right = rright );
+
+          Suspended {
+            break = b;
+            after;
+            right;
+          } in
+        debug "Advance up to new break, stop at %d" c.current;
+        make context status c
+    end
   | Minor(Lit s, rest) ->
     debug "advance lit";
     let newlines, c = commit_resolved_literal (max_indent geom) [s] (0,c) in
     let right = Move.commit_line newlines right in
+    let rright = suspended_len c.phy rest 0 c in
+    assert (right = rright );
+    debug "after lit: right %a" Move.pp right;
     advance_to_next_ambiguity geom context rest right c
   | Empty ->
     debug "empty stream: stop advance at %d" c.current;
@@ -256,22 +280,25 @@ let rec advance_to_next_ambiguity geom context stream right c =
 
 let rec advance_to_next_box max_indent stream right c =
   match Q.take_front stream with
-  | Major _ -> c, right, stream
+  | Major _ ->
+    debug "Next box reached at %d" c.current;
+    c, right, stream
   | Minor(Break b, stream) ->
     let indent = newline_indent ~max_indent ~more:b.indent c in
     debug "indent in hv: %d" indent;
     let r = right in
-    let right = Move.decrease (c.current + b.space - indent) right in
+    let right = Move.decrease_all b.space right in
     debug "next box: break %a ⇒ %a" Move.pp r Move.pp right;
     c |> phyline max_indent b.indent
     |> advance_to_next_box max_indent stream right
   | Minor(Lit s, stream) ->
+    debug "next box lit starting at %d" c.current;
     let n, c' = (0,c) |> commit_resolved_literal max_indent [s] in
     let r = right in
     let right = if n = 0 then Move.(right +> (c.current - c'.current) )
       else right in
     debug "next box: lit %a ⇒ %a" Move.pp r Move.pp right;
-    advance_to_next_box max_indent stream (Move.commit_line n right) c
+    advance_to_next_box max_indent stream (Move.commit_line n right) c'
   | Empty -> c, right, Q.empty
 
 let advance_to_next_ambiguity geom ctx stream right c =
@@ -286,9 +313,11 @@ let actualize_break geom context sd c =
   (*  let right = Move.commit_line 1 Move.(sd.right + absolute indent) in*)
   match c.kind with
   | HV n ->
-    let indent = newline_indent ~max_indent:(max_indent geom) ~more:n c in
+    let indent =
+      newline_indent ~max_indent:(max_indent geom) ~more:sd.break.indent c in
     let diff = indent - before -sd.break.space in
-    debug "HV break, before:%d, indent:%d" before indent;
+    debug "HV break, before:%d, indent:%d, diff:%d %a" before indent diff
+    Move.pp sd.right;
     let c, right, stream =
       advance_to_next_box (max_indent geom) sd.after Move.(sd.right +> diff)
         { c with kind = V n } in

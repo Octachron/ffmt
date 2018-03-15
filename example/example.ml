@@ -132,6 +132,27 @@ let hv_boxes_in_hv =
     [%fmt "@[<hv 0>ꙮ@ 05@ @[<hv 0>08@ 11@ 14@ 17@ 20+@]@ в@ у@ щ@]"]
     []
 
+let v_boxes_in_hv =
+  fprintf
+    [%fmt "@[<hv 2>@ 𒆍 @ ---@[<v 0>𒀭 @,𒊏 @]@ 𒆠 @ end@]"]
+    []
+
+
+let overfit_v_boxes_in_hv =
+  fprintf
+    [%fmt "@[<hv 2>@ Arma@ @[<v 0>virumque@,cano@,Troiæ qui primus ab@]\
+           @ oris@]"]
+    []
+
+
+let v_in_hv_in_hv =
+  fprintf
+    [%fmt "@[<hv 2>@ Arma@ @[<hv 0>virumque@ @[<v 0>cano@,\
+           Troiæ@]@ qui@ primus@ ab@]\
+           @ oris@]"]
+    []
+
+
 
 let () =
   List.iter exec [
@@ -248,5 +269,29 @@ les der
     die
     die the
         the
-        the|}
+        the|};
+"V boxes in hv box", v_boxes_in_hv,
+{|
+  𒆍 
+  ---𒀭 
+     𒊏 
+  𒆠 
+  end|};
+"Overfit V box in hv box", overfit_v_boxes_in_hv,
+{|
+  Arma
+  virumque
+  cano
+  Troiæ qui primus ab
+  oris|};
+"V box in HV in HV", v_in_hv_in_hv,
+{|
+  Arma
+  virumque
+  cano
+  Troiæ
+  qui
+  primus
+  ab
+  oris|}
 ]
