@@ -80,7 +80,7 @@ type suspended = {
   break:break_data;
   (** We are in the suspended mode because we don't know how to interpret
       this break yet *)
-  after: (suspended_lit, box * Move.t) Bigraded_fqueue.t;
+  after: (suspended_lit, box * int) Bigraded_fqueue.t;
   (** we already have computed these token after the block *)
   right: Move.t (** and we are currently at this position < margin *);
 }
@@ -413,7 +413,7 @@ let eager_indent: box -> _ = function
 let last_active_box pos sp =
   match Q.peek_major_back sp.after with
   | Some (b,pos) -> b, pos
-  | None ->  pos.kind, Move.pure pos.indent
+  | None ->  pos.kind, pos.indent
 
 let rec break geom br (ppf: _ t) =
   debug "break {space=%d;indent=%d}" br.space br.indent;
@@ -442,7 +442,7 @@ let rec break geom br (ppf: _ t) =
   | Suspended sd ->
     let right = match last_active_box c sd with
       | V k, m ->
-        Move.( sd.right + absolute k +> br.indent +> Move.pos m )
+        Move.( sd.right + absolute k +> br.indent +> m )
       | _ -> Move.(sd.right +> br.space ) in
     debug "computed position after break: %a" Move.pp right;
     let after = Q.push_min (Break br) sd.after  in
@@ -503,7 +503,7 @@ let rec open_box geom b (ppf: _ t) =
       pos |> actualize_break geom ppf.context s |> open_box geom b
     else
       let status = Suspended
-          { s with after = Q.push_maj (b,s.right) s.after } in
+          { s with after = Q.push_maj (b, Move.pos s.right) s.after } in
       { ppf with status }
 
 type ('a,'b) prim = Geometry.t -> 'a -> 'b t -> 'b t
