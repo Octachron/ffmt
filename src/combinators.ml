@@ -1,7 +1,7 @@
 (** Combinators for building printers *)
 
 open Defs
-open Format
+open Interpolation
 module E = Engine
 
 module Handwritten = struct

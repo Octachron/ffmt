@@ -4,7 +4,7 @@
 module E = Engine
 module D = Defs
 module Ft = Formatter_def
-module F = Format
+module F = Interpolation
 module Sem = Tagsem
 
 module NL = Ft.Nlist
@@ -47,15 +47,15 @@ let open_tag x (ppf: _ t) =
 let rec eval:
   type free b right final before after.
   <all:free; right:right; tail:b; fmt:final; tag_count:before -> after > F.format
-  -> (free,right) Format.iargs
+  -> (free,right) F.iargs
   -> (final,before) t -> (final,after) t  =
-  let open Format in
+  let open F in
   fun fmt iargs ppf -> match fmt with
     | [] -> ppf
     | Literal s :: q  -> eval q iargs (string s ppf)
     | Captured (k, f):: q ->
       let ppf = f iargs ppf in
-      let iargs = Format.take k iargs in
+      let iargs = F.take k iargs in
       eval q iargs ppf
     | Open_tag (tag,data) :: q ->
       begin match Sem.find_sem tag ppf.tag_semantic with
@@ -102,8 +102,8 @@ let rec eval:
 and close_tag: type any n after free b right final.
   bool -> any Defs.tag -> (n, Sem.open_tag) NL.t
   -> <all:free; right:right; tail:b; fmt:final;
-      tag_count: n -> after > Format.format
-  -> (free,right) Format.iargs
+      tag_count: n -> after > F.format
+  -> (free,right) F.iargs
   -> (final,n F.s) t -> (final, after) t =
   fun with_box tag open_tags q iargs ppf ->
   match Sem.find_sem tag ppf.tag_semantic with
@@ -117,4 +117,4 @@ and close_tag: type any n after free b right final.
     let tag_semantic: _ list = sem :: rest in
     eval q iargs { ppf with open_tags; tag_semantic }
 
-let fprintf fmt args = eval fmt (Format.make args)
+let fprintf fmt args = eval fmt (F.make args)

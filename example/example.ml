@@ -5,8 +5,8 @@ let fprintf = Formatter.fprintf
 
 let test s =
   let open Handwritten in
-  let b = Format.Point_tag (Defs.Break, (1,0)) in
-  let fb n = Format.Point_tag(Defs.Full_break, n) in
+  let b = Interpolation.Point_tag (Defs.Break, (1,0)) in
+  let fb n = Interpolation.Point_tag(Defs.Full_break, n) in
   let b0: _ Defs.tag * _ = Defs.B, 0 in
   let v = v 2 and hv = hv 0 in
   fprintf
@@ -115,7 +115,7 @@ let fmt = [%fmt "%s$4 %d %d"]
 let fmt2 = fmt
 
 let fmt3 = fprintf
-    Format.(fmt ^^ fmt2) [1;2;3;4;"⇒"]
+    Interpolation.(fmt ^^ fmt2) [1;2;3;4;"⇒"]
 
 let break_all =
   fprintf
