@@ -1,4 +1,4 @@
-open Stringi
+open Metafmt
 open Combinators
 
 let fprintf = Formatter.fprintf

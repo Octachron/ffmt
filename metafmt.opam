@@ -1,4 +1,4 @@
-name: "stringi-opam"
+name: "metafmt"
 version:"0.1"
 opam-version: "1.2"
 maintainer: "Florian Angeletti <octa@polychoron.fr>"
@@ -18,5 +18,4 @@ build-doc:[
 
 depends: [
   "jbuilder" {build}
-  "stringi"
   ]

@@ -1,4 +1,4 @@
-name: "stringi"
+name: "metafmt-ppx"
 version:"0.1"
 opam-version: "1.2"
 maintainer: "Florian Angeletti <octa@polychoron.fr>"
@@ -18,4 +18,5 @@ build-doc:[
 
 depends: [
   "jbuilder" {build}
+  "stringi"
   ]

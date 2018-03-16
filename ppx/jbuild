@@ -3,11 +3,11 @@
 (ocamllex (lex))
 
 (library (
- (public_name stringi-ppx)
+ (public_name metafmt-ppx)
  (name ppx)
  (wrapped false)
  (preprocess (pps (ppx_tools_versioned.metaquot_404)))
  (kind ppx_rewriter)
- (ppx_runtime_libraries (stringi))
+ (ppx_runtime_libraries (metafmt))
  (libraries (ppx_core ppx_driver))
 ) )

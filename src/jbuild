@@ -1,8 +1,8 @@
 (jbuild_version 1)
 
 (library (
-         (name stringi)
-         (public_name stringi)
+         (name metafmt)
+         (public_name metafmt)
          (libraries (containers.data sequence))
  )
 )

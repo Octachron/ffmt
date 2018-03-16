@@ -144,7 +144,7 @@ let rec ast stream =
 
 let build ~loc ~path:_ s =
   let frag = ast @@ stream Lex.main loc s in
-  [%expr Stringi.Format.( [%e frag ] ) ]
+  [%expr Metafmt.Format.( [%e frag ] ) ]
 
 
 

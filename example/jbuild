@@ -3,7 +3,7 @@
 (executable (
             (name example)
             (preprocess (pps (ppx)))
-            (libraries (stringi))
+            (libraries (metafmt))
 ))
 
 (alias
