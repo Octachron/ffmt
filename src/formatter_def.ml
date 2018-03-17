@@ -40,3 +40,7 @@ class type semclass = object('self)
    'self * ('a,'b) t endo
  method close_printer: 'a 'b. 'self *  ('a,'b) t endo
 end
+
+type (_,_) index =
+  | Z: ('elt, 'elt -> _ ) index
+  | S: ('elt, 'list) index -> ('elt, 'any -> 'list) index
