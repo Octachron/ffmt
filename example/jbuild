@@ -1,13 +1,13 @@
 (jbuild_version 1)
 
 (executable (
-            (name example)
-            (preprocess (pps (ppx)))
+            (name interpolation)
+            (preprocess (pps (ppxi)))
             (libraries (metafmt))
 ))
 
 (alias
  ((name    runtest)
-  (deps    (example.exe))
+  (deps    (interpolation.exe))
   (action  (run ${<}))
 ))
