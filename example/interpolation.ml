@@ -1,10 +1,10 @@
 open Metafmt
 open Combinators
 
-let fprintf = Formatter.fprintf
+let fprintf = Iprintf.fprintf
 
 let test s =
-  let open Handwritten in
+  let open Icombinators.Handwritten in
   let b = Interpolation.Point_tag (Defs.Break, (1,0)) in
   let fb n = Interpolation.Point_tag(Defs.Full_break, n) in
   let b0: _ Defs.tag * _ = Defs.B, 0 in

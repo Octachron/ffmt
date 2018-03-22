@@ -7,10 +7,49 @@ type modal =
 type yes = private Yes
 type no = private No
 
+module Variant = struct
+
+  type hex = Std | Hash
+  type justification = Left | Right
+  type sign = No | Plus
+  type padding = Space | Zero
+  type int =
+    | Hex of {capitalized:bool; hex:hex; align:justification; padding:padding }
+    | Octa of {hex:hex; align:justification; padding:padding }
+    | Unsigned of {align:justification; padding: padding }
+    | Signed of { align:justification; padding: padding; sign: sign }
+
+
+  let int = Signed { align=Right; padding=Space; sign=No }
+
+  type float =
+    | Float of { reflect: bool; align:justification; padding:padding }
+    | Float_hex of {capitalized:bool; align:justification; padding:padding }
+
+  let float = Float { reflect=false; align=Left; padding= Space }
+
+  type string = { justification:justification; reflect: bool }
+
+  let string = { justification=Left; reflect=false }
+
+end
+
+
+type _ integer_core =
+  | Int: Variant.int -> int integer_core
+  | Int32: Variant.int -> int32 integer_core
+  | Int64: Variant.int -> int64 integer_core
+  | Native_int: Variant.int -> nativeint integer_core
+
+(*
+let string_of_num (type x) ~padding ~precision (x: num_core) (x:x)
+*)
+
 type (_,_) typ =
   | String: (string, no) typ
 
   | Int: (int,yes) typ
+  | Bool: (bool,no) typ
   | Int32: (int32,yes) typ
   | Int64: (int64,yes) typ
   | Nativeint: (nativeint,yes) typ
@@ -41,6 +80,7 @@ type (_,_,_) index =
 type (_,_,_,_) pos =
   | Relative: ('x,'right, 'right2 ) index -> ('x, 'list, 'right, 'right2) pos
   | Absolute: ('x,'list, _ ) index -> ('x,'list, 'right,'right) pos
+  | Int_constant: int option  -> (int, 'list, 'right, 'right) pos
 
 type ('a,'b) eq = Refl: ('a,'a) eq
 type empty = (int,float) eq
@@ -69,28 +109,8 @@ let take: type x l r r2. (l,r) iargs -> (x,l,r,r2) pos -> x * (l,r2) iargs =
     | Absolute k -> nth k iargs.all, iargs
     | Relative k -> let x, right = take_nth k iargs.right in
       x, { iargs with right }
-
-type (_,_,_) modifier =
-  | One: (int, 'list,'right,'right2) pos ->
-    ('list, 'right, 'right2) modifier
-  | Two:
-      (int, 'list,'right,'right2) pos * (int,'list,'right2, 'right3) pos ->
-    ('list, 'right, 'right3) modifier
-
-type (_,_,_,_) elt =
-  | S: ('a,'l,'r,'r2) pos * ('a,_) typ -> ('l, 'r -> 'r2, 'x -> 'x, 'any) elt
-  | Alpha:
-      (('a, 'x * 'fn) printer ,'l,'r,'r2) pos *
-      ( 'a ,'l,'r2,'r3) pos
-    -> ('l,'r -> 'r3, 'fn, 'x) elt
-  | Theta:
-      (('x * 'fn) mapper ,'l,'r,'r2) pos  -> ('l,'r->'r2 , 'fn,'x) elt
-  | Star:
-      ('l, 'r, 'r2) modifier
-      * ('x,yes) typ * ('x,'l,'r2,'r3) pos
-    -> ('l,'r -> 'r3 ,'x -> 'x, 'any) elt
-
-
+    | Int_constant (Some x) -> x, iargs
+    | Int_constant None -> 0, iargs
 
 type 'all default = 'all
   constraint 'all = < list: 'a; pos:'b -> 'c; fmt:'d; tag_count:'e -> 'f >
@@ -107,6 +127,8 @@ type 'all nofmt = 'all
 
 type 'a s = 'a Ft.s
 type z = Ft.z
+
+let implicit = Int_constant None
 
 type _ token =
   | Literal: string -> _ notag unread token
@@ -126,11 +148,23 @@ type _ token =
   | Theta:
       (('x * 'fn) mapper ,'l,'r,'r2) pos
     -> <list:'l; pos:'r -> 'r2; tag_count: 'fn; fmt: 'x > default token
-  | Star:
-      ('l, 'r, 'r2) modifier
-      * ('x,yes) typ * ('x,'l,'r2,'r3) pos
-    -> <list:'l; pos: 'r -> 'r3; .. > notag token
+  | Integer: {core: 'x integer_core;
+              padding:(int, 'l,'r,'r2) pos;
+              pos:('x,'l,'r2,'r3) pos
+             } ->
+    <list:'l; pos:'r -> 'r3; ..> notag token
+  | Float: {variant: Variant.float;
+            padding:(int, 'l,'r,'r2) pos;
+            precision:(int,'l,'r2,'r3) pos;
+            pos:(float,'l,'r3,'r4) pos } ->
+    <list:'l; pos:'r -> 'r4; ..> notag token
 
+  | String:
+      { variant: Variant.string
+      ; padding:(int,'l,'r,'r2) pos
+      ; pos:(string,'l,'r2,'r3) pos
+      }
+    -> <list:'l;pos:'r -> 'r3; .. > notag token
 
 type _ t =
   | []:
@@ -157,6 +191,7 @@ let rec (^^): type left right b a k l m fmt.
     | S (x,y) :: q -> S(x,y) :: (q ^^ r)
     | Alpha (k,l) :: q -> Alpha(k,l) :: ( q ^^ r)
     | Theta k :: q -> Theta k :: ( q ^^ r)
-    | Star(m,t,k) :: q -> Star (m,t,k) :: ( q ^^ r)
-
+    | Integer x :: q -> Integer x :: (q ^^ r )
+    | Float x :: q -> Float x :: (q ^^ r)
+    | String x :: q -> String x :: (q ^^ r)
 let make x = { all=x; right = x}

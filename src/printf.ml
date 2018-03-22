@@ -83,15 +83,25 @@ let rec eval:
       let f, rest = F.take iargs fn in
       let x, rest = F.take rest an in
       ppf |> f x |> eval q rest
-    | Star (One l, typ, k) :: q ->
-      let _x, rest = take iargs l in
-      let y, rest = take rest k in
-      ppf |> primitive typ y |> eval q rest
-  | Star (Two (k,l), typ, n) :: q ->
-    let _x, rest = take iargs k in
-    let _y, rest = take rest l in
-    let y, rest = take rest n in
-    ppf |> primitive typ y |> eval q rest
+    | Integer r :: q ->
+      let _padding, rest = take iargs r.padding in
+      let x, rest = take rest r.pos in
+      let ppf = ppf |> begin match r.core with
+        | Int _v -> string(string_of_int x)
+        | Int32 _v -> string (Int32.to_string x)
+        | Int64 _v -> string (Int64.to_string x)
+        | Native_int _v -> string (Nativeint.to_string x)
+      end in
+      eval q rest ppf
+    | Float r :: q ->
+      let _padding, rest = take iargs r.padding in
+      let _precision, rest = take rest r.precision in
+      let x, rest = take rest r.pos in
+      ppf |> string (string_of_float x) |> eval q rest
+    | String r :: q ->
+      let _padding, rest = take iargs r.padding in
+      let x, rest = take rest r.pos in
+      ppf |> string x |> eval q rest
 
 and close_tag: type any n after free b right final.
   bool -> any Defs.tag -> (n, Sem.open_tag) NL.t

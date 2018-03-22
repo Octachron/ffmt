@@ -2,12 +2,29 @@
 
 (executable (
             (name interpolation)
+            (modules (Interpolation))
             (preprocess (pps (ppxi)))
             (libraries (metafmt))
 ))
 
+
+(executable (
+            (name meta)
+            (modules (Meta))
+            (preprocess (pps (ppx)))
+            (libraries (metafmt))
+))
+
+
 (alias
  ((name    runtest)
   (deps    (interpolation.exe))
+  (action  (run ${<}))
+))
+
+
+(alias
+ ((name    runtest)
+  (deps    (meta.exe))
   (action  (run ${<}))
 ))
