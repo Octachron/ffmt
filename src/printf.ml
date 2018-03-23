@@ -87,10 +87,10 @@ let rec eval:
       let _padding, rest = take iargs r.padding in
       let x, rest = take rest r.pos in
       let ppf = ppf |> begin match r.core with
-        | Int _v -> string(string_of_int x)
-        | Int32 _v -> string (Int32.to_string x)
-        | Int64 _v -> string (Int64.to_string x)
-        | Native_int _v -> string (Nativeint.to_string x)
+        | Int -> string(string_of_int x)
+        | Int32 -> string (Int32.to_string x)
+        | Int64 -> string (Int64.to_string x)
+        | Native_int -> string (Nativeint.to_string x)
       end in
       eval q rest ppf
     | Float r :: q ->

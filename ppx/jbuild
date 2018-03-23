@@ -1,23 +1,18 @@
 (jbuild_version 1)
 
+(ocamllex (mlex))
 (ocamllex (lex))
 
-(library (
- (name lex)
- (modules (Lex))
- (wrapped false)
- )
-)
 
 (library (
  (public_name metafmt-ppx-i)
  (name ppxi)
  (wrapped false)
- (modules (Ppxi))
+ (modules (Ppxi Lex))
  (preprocess (pps (ppx_tools_versioned.metaquot_404)))
  (kind ppx_rewriter)
  (ppx_runtime_libraries (metafmt))
- (libraries (lex ppx_core ppx_driver))
+ (libraries (ppx_core ppx_driver))
 ) )
 
 
@@ -25,9 +20,9 @@
  (public_name metafmt-ppx)
  (name ppx)
  (wrapped false)
- (modules (Ppx))
+ (modules (Ppx Mlex))
  (preprocess (pps (ppx_tools_versioned.metaquot_404)))
  (kind ppx_rewriter)
  (ppx_runtime_libraries (metafmt))
- (libraries (lex ppx_core ppx_driver))
+ (libraries (ppx_core ppx_driver))
 ) )

@@ -25,21 +25,23 @@ module Variant = struct
   type float =
     | Float of { reflect: bool; align:justification; padding:padding }
     | Float_hex of {capitalized:bool; align:justification; padding:padding }
+    | Float_e of { align:justification; padding:padding }
+    | Float_g of { align:justification; padding:padding }
 
   let float = Float { reflect=false; align=Left; padding= Space }
 
-  type string = { justification:justification; reflect: bool }
+  type string = { align:justification; reflect: bool }
 
-  let string = { justification=Left; reflect=false }
+  let string = { align=Left; reflect=false }
 
 end
 
 
 type _ integer_core =
-  | Int: Variant.int -> int integer_core
-  | Int32: Variant.int -> int32 integer_core
-  | Int64: Variant.int -> int64 integer_core
-  | Native_int: Variant.int -> nativeint integer_core
+  | Int: int integer_core
+  | Int32: int32 integer_core
+  | Int64:  int64 integer_core
+  | Native_int: nativeint integer_core
 
 (*
 let string_of_num (type x) ~padding ~precision (x: num_core) (x:x)
@@ -148,7 +150,7 @@ type _ token =
   | Theta:
       (('x * 'fn) mapper ,'l,'r,'r2) pos
     -> <list:'l; pos:'r -> 'r2; tag_count: 'fn; fmt: 'x > default token
-  | Integer: {core: 'x integer_core;
+  | Integer: {core: 'x integer_core; variant:Variant.int;
               padding:(int, 'l,'r,'r2) pos;
               pos:('x,'l,'r2,'r3) pos
              } ->

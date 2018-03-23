@@ -54,46 +54,99 @@ let absolute n = [%expr Absolute [%e nat n]]
 
 module B = Ast_builder.Default
 
+let hole = function
+  | Mlex.Abs n -> absolute n
+  | Mlex.Rel n -> relative n
+
+let param loc (x:Mlex.param) = match x with
+  | Abs n -> absolute n
+  | Rel n -> relative n
+  | No -> [%expr Int_constant None]
+  | Const i -> [%expr Int_const (Some [%e B.eint ~loc i]) ]
+
+let simple pos = function
+  | 't' -> [%expr Theta [%e hole pos]]
+  | 'b' | 'B' -> [%expr S(Bool,[%e hole pos])]
+  | 'c' | 'C' -> [%expr S(Char,[%e hole pos])]
+  | _ -> assert false
+
+let integer loc (r:Mlex.integer_info) =
+  let typ = match r.typ with
+    | Some 'l' -> [%expr Int32]
+    | Some 'L' -> [%expr Int64]
+    | Some 'n' -> [%expr Native_int]
+    | _  -> [%expr Int] in
+  let alt = if r.alt then [%expr Hash] else [%expr Std] in
+  let a = if r.left_align then [%expr Left] else [%expr Right] in
+  let zp = if r.zero_padding then [%expr Zero] else [%expr Space] in
+  let s = if r.sign then [%expr Plus] else [%expr No] in
+  let v = match r.variant with
+    | 'X' | 'x' ->
+      let c = B.ebool ~loc (r.variant = 'X') in
+      [%expr Hex { capitalized=[%e c];
+               hex = [%e alt];
+               align=[%e a];
+               padding = [%e zp]}]
+    | 'o' -> [%expr Octa { hex=[%e alt]; align=[%e a]; padding=[%e zp] } ]
+    | 'u' -> [%expr Unsigned {align=[%e a]; padding=[%e zp] } ]
+    | _ -> [%expr Signed {align=[%e a]; padding=[%e zp]; sign=[%e s] } ]
+  in
+  [%expr Integer { variant=[%e v]; core = [%e typ];
+                   padding=[%e param loc r.padding];
+                   pos=[%e hole r.pos]}
+  ]
+
+let float loc (r:Mlex.float_info) =
+  let a = if r.left_align then [%expr Left] else [%expr Right] in
+  let zp = if r.zero_padding then [%expr Zero] else [%expr Space] in
+  (*  let s = if r.sign then [%expr Plus] else [%expr No] in*)
+  let v = match r.variant with
+    | 'H' | 'h' ->
+      let c = B.ebool ~loc (r.variant = 'H') in
+      [%expr Float_hex { capitalized=[%e c]; align=[%e a]; padding = [%e zp]}]
+    | 'F' -> [%expr Float { reflect=true; align=[%e a]; padding=[%e zp] } ]
+    | 'g' -> [%expr Float_g { align=[%e a]; padding=[%e zp] } ]
+    | 'e' -> [%expr Float_g { align=[%e a]; padding=[%e zp] } ]
+    | 'f' | _ -> [%expr Float { reflect=false; align=[%e a]; padding=[%e zp] } ]
+  in
+  [%expr Float { variant=[%e v];
+                 padding=[%e param loc r.padding];
+                 precision=[%e param loc r.precision];
+                 pos=[%e hole r.pos]}
+  ]
+
+
+let string loc (r: Mlex.string_info) =
+  let re = B.ebool ~loc (r.variant = 'S') in
+  let a = if r.left_align then [%expr Left] else [%expr Right] in
+  [%expr String { variant = { reflect = [%e re]; align=[%e a] };
+                  padding = [%e param loc r.padding];
+                  pos = [%e hole r.pos] }
+  ]
+
 exception Not_supported
 let rec ast stream =
   let tok, loc = stream () in
+  let k x = x @:: ast stream in
   match tok with
-  | Lex.EOF ->  stop
-  | TEXT t ->
-    [%expr Literal [%e str loc t] ] @:: ast stream
-  | FRAG _ -> raise Not_supported
-  | OPEN_IMPLICIT_TAG ->
-    [%expr Open_tag(B,1)] @:: ast stream
-  | OPEN_TAG s ->
-    let box = subparser loc s in
-    [%expr Open_tag [%e box] ] @:: ast stream
-  | CLOSE_TAG ->
-    [%expr Close_any_tag] @:: ast stream
+  | Mlex.EOF ->  stop
+  | TEXT t -> k [%expr Literal [%e str loc t] ]
+  | OPEN_DEFAULT_TAG -> k [%expr Open_tag(B,1)]
+  | OPEN_TAG s -> k [%expr Open_tag [%e subparser loc s] ]
+  | CLOSE_TAG -> k [%expr Close_any_tag]
   | BREAK {space;indent} ->
     let space = Ast_builder.Default.eint ~loc space
     and indent = Ast_builder.Default.eint ~loc indent in
-    [%expr Point_tag(Defs.Break, ([%e space], [%e indent])) ] @:: ast stream
-  | IMPLICIT_FRAG "a" -> [%expr Alpha([%e relative 0],[%e relative 0]) ]
-    @:: ast stream
-  | IMPLICIT_FRAG "t" -> [%expr Theta [%e relative 0] ]  @:: ast stream
-  | IMPLICIT_FRAG n -> s (relative 0) n @:: ast stream
-
-  | POS_IMPLICIT_FRAG ("a",pos) ->
-    [%expr Alpha([%e absolute pos],[%e relative 0]) ]
-    @:: ast stream
-  | POS_IMPLICIT_FRAG ("t",pos) ->
-    [%expr Theta [%e absolute pos] ]
-    @:: ast stream
-
-  | POS_IMPLICIT_FRAG (n,pos) ->
-    s (absolute pos) n @:: ast stream
-  | FULL_BREAK n ->
-    [%expr Point_tag(Defs.Full_break, [%e B.eint ~loc n])] @:: ast stream
-  | _ -> assert false
-
+    k [%expr Point_tag(Defs.Break, ([%e space], [%e indent])) ]
+  | FULL_BREAK n -> k [%expr Point_tag(Defs.Full_break, [%e B.eint ~loc n])]
+  | ALPHA(a,b) -> k [%expr Alpha([%e hole a],[%e hole b]) ]
+  | SIMPLE {variant; pos} -> k @@ simple pos variant
+  | INTEGER r -> k @@ integer loc r
+  | FLOAT r -> k @@ float loc r
+  | STRING r -> k @@ string loc r
 
 let build ~loc ~path:_ s =
-  let frag = ast @@ stream Lex.main loc s in
+  let frag = ast @@ stream Mlex.main loc s in
   [%expr Metafmt.Fmt.( [%e frag ] ) ]
 
 
