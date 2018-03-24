@@ -29,7 +29,7 @@ and ('a,'n) t = {
   geometry: Geometry.t;
   tag_semantic: sem list;
   open_tags: ('n, open_tag) Nlist.t;
-  metadata: 'a E.t
+  layout_engine: 'a E.t
 }
 
 class type semclass = object('self)

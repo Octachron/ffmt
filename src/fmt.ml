@@ -65,7 +65,7 @@ type (_,_) typ =
   | Array: ('a,'b) typ -> ('a array,'b) typ
   | Option: ('a,'b) typ -> ('a option,'b) typ
 
-module Ft = Formatter_def
+module Ft = Core
 
 type 'p mapper =
   ('a,'n) Ft.t -> ('a,'n2) Ft.t

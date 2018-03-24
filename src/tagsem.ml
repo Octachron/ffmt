@@ -1,11 +1,11 @@
 module D = Defs
-module F = Formatter_def
+module F = Core
 
-type open_tag = Formatter_def.open_tag =
+type open_tag = Core.open_tag =
     Open_tag : {tag: 'any D.tag; with_box: bool } -> open_tag
 
-type sem = Formatter_def.sem
-class type semclass = Formatter_def.semclass
+type sem = Core.sem
+class type semclass = Core.semclass
 type ('a,'b) printer = ('a,'b) F.t D.endo
 
 

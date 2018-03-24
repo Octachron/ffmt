@@ -1,11 +1,11 @@
 (** Core definition of format string *)
-module Def = Formatter_def
-type ('a,'b) fmt = ('a,'b) Formatter_def.t
+module Def = Core
+type ('a,'b) fmt = ('a,'b) Def.t
 
 
 
-type 'a s = 'a Formatter_def.s
-type z = Formatter_def.z
+type 'a s = 'a Def.s
+type z = Def.z
 
 module Size = struct
   type (_,_) t =
