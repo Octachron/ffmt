@@ -133,12 +133,14 @@ let v_in_hv_in_hv =
            @ oris@]"]
     []
 
+let try0 = fprintf
+    [%fmt "@[<try'>abcdefghijklmnopqrstuvwxyz@]@[<else'>α@]"] []
+
 let hh = fprintf
   [%fmt "@[<v 2>@,\
-         @[<hh>123456@]@,\
-         @[<hh>12345678910@]@,\
-         @[<hh>abcdefghijklmnopqrstuvwxyz@]@,\
-         @]"
+         @[<try'>123456@]@,\
+         @[<try'>12345678910@]@,\
+         @[<try'>abcdefghijklmnopqrstuvwxyz@]@[<then'>@,@]@]"
   ] []
 
 
@@ -272,5 +274,7 @@ les der
   123456
   12345678910
   
-  |}
+  |};
+"try 0", try0,{|
+α|}
 ]

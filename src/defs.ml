@@ -6,7 +6,11 @@ type box =
   | HV of int
   | B of int
   | Hide
-  | HH
+  | If
+  | Then
+  | Else
+  | Translucid
+
 type break_data = { space: int; indent: int }
 type break = Break of break_data | Full_break of int
 
@@ -20,7 +24,8 @@ type _ tag +=
   | V: int tag
   | HoV: int tag
   | HV: int tag
-  | HH: unit tag
-  | Hide: unit tag
+  | If: unit tag
+  | Then: unit tag
+  | Else: unit tag
   | Break: (int * int) tag
   | Full_break: int tag

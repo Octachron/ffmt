@@ -40,7 +40,7 @@ let box =
     method mine: type any. any D.tag -> bool =
       function
       | D.B -> true | D.V -> true | D.HV -> true | D.HoV -> true | D.H -> true
-      | D.HH -> true | D.Hide -> true
+      | D.If -> true | D.Then -> true | D.Else -> true
       | D.Break -> true | D.Full_break -> true
       | _ -> false
     method box: type a. a D.tag -> a -> D.box option = fun tag i ->
@@ -50,8 +50,9 @@ let box =
       | D.V -> Some (V i)
       | D.HV -> Some (HV i)
       | D.HoV -> Some (HoV i)
-      | D.Hide -> Some Hide
-      | D.HH -> Some HH
+      | D.If -> Some If
+      | D.Else -> Some Else
+      | D.Then -> Some Then
       | _ -> None
 
     method break: type a. a D.tag -> a -> D.break option = fun tag i ->

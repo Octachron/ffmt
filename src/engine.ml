@@ -53,13 +53,21 @@ module Move = struct
   let pure n = Relative n
 end
 
+type event =
+  | Newline (** did we convert a break to a newline? *)
+  | Hidden (** did we hide a conditional box ?*)
+  | Nothing (** nothing interesting happened *)
+
 type 'a position =
   {
     phy: 'a Raw.t; (** the underlying driver *)
     current:int; (** we are currently writing at position *)
     kind:box; (** with this box context *)
     indent:int; (** and at this indentation *)
-    last_indent:int (** the previous line break was done with this indent *)
+    last_indent:int
+  (** the previous line break was done with this indent *);
+    last_event: event;
+    (** last interesting event *)
   }
 
 type suspended = {
@@ -77,8 +85,8 @@ type status =
   (** We are directly writing to the logical device *)
 
   | Suspended of suspended
-  (**We are blocked at an ambiguous break, waiting for the decision on
-     how to interpret it *)
+  (**We are blocked at an ambiguous break or conditional box,
+     waiting for the decision on how to interpret it *)
 
   | Hide of { boxes: int }
   (** We are discarding data waiting for the end of the current hidden box *)
@@ -98,7 +106,7 @@ module I = Geometry.Indentation
 
 let box_indent: box -> int = function
   | B n | HV n | HoV n | V n-> n
-  | H | HH | Hide -> 0
+  | H | If | Then | Else | Hide | Translucid -> 0
 
 let newline_indent ~max_indent ~more pos =
   min (pos.indent + more + box_indent pos.kind) max_indent
@@ -108,18 +116,23 @@ let phyline max_indent more pos =
   { pos with
     phy = pos.phy#break#indent {I.line = 0; column};
     current = column;
-    last_indent = column
+    last_indent = column;
+    last_event = Newline
   }
 
 let reindent n: box -> box = function
   | B _ -> B n | HV _ -> HV n | HoV _ -> HoV n | V _ -> V n
-  | H -> H | Hide -> Hide | HH -> HH
+  | H  | Hide | If | Then | Else | Translucid as b -> b
 
+(** Reset indentation after a box is rejected to the left due
+    to its potential indentation being greater that the maximum
+    indentation limit *)
 let phyreset kind (phy:_ Raw.t) =
   let indent = 0 in
   let kind = reindent 0 kind in
   { phy = phy#break#indent {I.line = 1; column=indent};
-    current = indent; indent; last_indent = indent; kind
+    current = indent; indent; last_indent = indent; kind;
+    last_event = Newline (* should this be a separated event ?*)
   }
 
 let newline geom more pos =
@@ -127,15 +140,17 @@ let newline geom more pos =
 
 let physpace  n pos =
   { pos with phy = pos.phy#space n;
-    current = n + pos.current }
+    current = n + pos.current; last_event=Nothing }
 let phystring s pos =
   let r = Raw.all s in
   { pos with phy = pos.phy#string r;
-             current = pos.current + pos.phy#len r
+             current = pos.current + pos.phy#len r;
+             last_event = Nothing
   }
 
 let direct_string context c s  =
-  make context Direct (phystring s c)
+  make context Direct @@ phystring s c
+
 let is_vertical (x: box) = match x with V _ -> true | _ -> false
 let max_indent geom = geom.G.max_indent
 
@@ -152,8 +167,8 @@ let commit_resolved_literal max_indent lits c =
 
 let rec advance_to_next_ambiguity geom context stream right c =
   match Q.take_front stream with
-  | Major(((HH:box), _), after) ->
-    (* horizontal or hidden boxes immediately suspend the output until
+  | Major(((If:box), _), after) ->
+    (* conditional boxes immediately suspend the output until
        their resolution *)
     let status = Suspended { break = None; after; right } in
     make context status c
@@ -185,8 +200,9 @@ let rec advance_to_next_ambiguity geom context stream right c =
 let rec hide context stream count c =
   match Q.take_front stream with
   | Major (((Hide:box), _), after) -> hide context after (count +1) c
-  | Major(_, after) | Minor(_,after) -> hide context after (count + 1 ) c
-  | Empty -> make context (Hide {boxes=1}) c
+  | Major(_, after) -> hide context after (count + 1 ) c
+  | Minor(_,after) -> hide context after count c
+  | Empty -> make context (Hide {boxes=count}) c
 
 let rec advance_to_next_box max_indent stream right c =
   match Q.take_front stream with
@@ -211,7 +227,7 @@ let actualize_break geom context sd c =
   let br = sbreak sd in
   let c = newline geom br.indent c in
   match c.kind with
-  | HH -> hide context sd.after 1 c
+  | If -> hide context sd.after 1 { c with last_event = Hidden }
   | HV n ->
     let indent =
       newline_indent ~max_indent:(max_indent geom) ~more:br.indent c in
@@ -230,7 +246,8 @@ let rec string geom s ppf =
   | Direct ->
     direct_string ppf.context ppf.position s
   | Suspended sd ->
-    let right = Move.( sd.right +> ppf.position.phy#len (Raw.all s) ) in
+    let right = let open Move in
+      sd.right +> ppf.position.phy#len (Raw.all s) in
     if Move.pos right > geom.G.margin then
          ppf.position
       |> actualize_break geom ppf.context sd
@@ -250,7 +267,7 @@ let reactivate position (context: open_box_on_the_left list) =
        { position with indent; kind }, q
 
 
-let translate_break (b:break_data) box =
+let translate_break (b:break_data) box: resolved_lit =
   if is_vertical box then Newline (b.indent + box_indent box) else Space b.space
 
 let resolve_box bx stream =
@@ -288,38 +305,59 @@ let close_box geom ppf =
     let position, context = reactivate ppf.position ppf.context in
     { ppf with position; context }
   | Suspended sp -> coalesce geom ppf.context sp ppf.position
-  | Hide {boxes=0} ->
+  | Hide {boxes=1} ->
     let position, context = reactivate ppf.position ppf.context in
-    { ppf with position; context }
-  | Hide {boxes} -> { ppf with status = Hide {boxes=boxes - 1} }
+    { position; context; status = Direct }
+  | Hide {boxes} ->
+    { ppf with status = Hide {boxes=boxes - 1} }
 
 
 let eager_indent: box -> _ = function
   | B _ -> true
   | _ -> false
 
+
+let rec look_for_active_box default after =
+  match Q.take_major_back after with
+  | Some(rest, (Translucid,_)), _ ->
+    look_for_active_box default rest
+  | Some(_, (b,indent)), _ -> b, indent
+  | None, _ -> default.kind, default.indent
+
 let last_active_box pos sp =
   match Q.peek_major_back sp.after with
+  | Some(Translucid, _) ->
+    look_for_active_box pos sp.after
   | Some (b,pos) -> b, pos
   | None ->  pos.kind, pos.indent
+
+let active_box ppf =
+  let rec search = function
+    | [] -> default_box
+    | ({kind=Translucid; _}: open_box_on_the_left) :: q -> search q
+    | a :: _ -> a.kind in
+  if ppf.position.kind <> Translucid then
+    ppf.position.kind else
+    search ppf.context
 
 let rec break geom br (ppf: _ t) =
   let c = ppf.position in
   match ppf.status with
   | Hide _ -> ppf
-  | Direct -> begin match c.kind with
+  | Direct -> begin match active_box ppf with
       | Hide -> ppf
       | H -> update ppf (physpace br.space c)
       | V _ -> update ppf (newline geom br.indent c)
-      | HoV _ | B _ | HV _ | HH as b ->
+      | HoV _ | B _ | HV _ | If | Then | Else | Translucid as b ->
         if c.current + br.space > geom.G.margin
         || (eager_indent b &&
             c.indent + br.indent + box_indent b < c.last_indent)
         then
           let kind: box = match c.kind with
             | HV n -> V n
-            | HH -> Hide
-            | HoV _ | B _ | H | V _ | Hide as b -> b in
+            | If -> Hide
+            | HoV _ | B _ | H | V _ | Hide | Then | Else | Translucid
+              as b -> b in
           { c  with kind }
             |> newline geom br.indent
             |> update ppf
@@ -367,9 +405,18 @@ let rec full_break geom br (ppf:_ t) =
     | _ ->
       pos |> actualize_break geom ppf.context sd |> full_break geom br
 
-let box_always_suspends = function
-  | (HH:box) -> true
-  | _ -> false
+
+let pp_box ppf: box -> _ = function
+  | Else -> Format.fprintf ppf "else"
+  | If -> Format.fprintf ppf "if"
+  | Then -> Format.fprintf ppf "then"
+  | Translucid -> Format.fprintf ppf "translucid"
+  | Hide -> Format.fprintf ppf "hide"
+  | H -> Format.fprintf ppf "h"
+  | V _ -> Format.fprintf ppf "v"
+  | HV _ -> Format.fprintf ppf "hv"
+  | HoV _ -> Format.fprintf ppf "hov"
+  | B _ -> Format.fprintf ppf "b"
 
 let rec open_box geom b (ppf: _ t) =
   let pos = ppf.position in
@@ -382,13 +429,24 @@ let rec open_box geom b (ppf: _ t) =
       let position = { pos with kind = b; indent = pos.current } in
       let context: open_box_on_the_left list =
         {indent = pos.indent; kind = pos.kind } :: ppf.context in
-      let ppf = { ppf with context; position } in
-      if box_always_suspends b then
+      let ppf = { ppf with position; context } in
+      begin match (b:box) with
+      | If -> (* if boxes always suspend *)
         let status =
           Suspended {after = Q.empty; break = None;
-                     right = Move.pure position.current} in
+                     right = Move.pure pos.current} in
         { ppf with status }
-      else ppf
+      | Then when pos.last_event = Nothing  ->
+        let position = { pos with kind = Translucid } in
+        { ppf with position; context }
+      | Else when pos.last_event = Nothing ->
+        { ppf with status = Hide { boxes = 1 } }
+      | Else ->
+        let position = { pos with kind = Translucid } in
+        { ppf with position }
+      | Then -> { ppf with status = Hide { boxes = 1 } }
+      | _ -> ppf
+      end
   | Suspended s ->
     if Move.pos s.right > geom.G.box_margin then
       pos |> actualize_break geom ppf.context s |> open_box geom b
@@ -396,12 +454,14 @@ let rec open_box geom b (ppf: _ t) =
       let status = Suspended
           { s with after = Q.push_maj (b, Move.pos s.right) s.after } in
       { ppf with status }
-  | Hide r -> { ppf with status = Hide { boxes = r.boxes + 1 } }
+  | Hide r ->
+    let () = Format.eprintf "hidden |%a| box@." pp_box b in
+    { ppf with status = Hide { boxes = r.boxes + 1 } }
 
 type ('a,'b) prim = Geometry.t -> 'a -> 'b t -> 'b t
 let start phy =
   { status = Direct;
-    position= {current=0;indent=0; kind=default_box; last_indent=0; phy };
+    position= {current=0;indent=0; kind=default_box; last_indent=0; phy; last_event = Nothing };
     context = [] }
 
 let close_box geom () = close_box geom
