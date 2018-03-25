@@ -186,7 +186,7 @@ let rec hide context stream count c =
   match Q.take_front stream with
   | Major (((Hide:box), _), after) -> hide context after (count +1) c
   | Major(_, after) | Minor(_,after) -> hide context after (count + 1 ) c
-  | Empty -> make context (Hide {boxes=count}) c
+  | Empty -> make context (Hide {boxes=1}) c
 
 let rec advance_to_next_box max_indent stream right c =
   match Q.take_front stream with
@@ -370,6 +370,7 @@ let rec full_break geom br (ppf:_ t) =
 let box_always_suspends = function
   | (HH:box) -> true
   | _ -> false
+
 let rec open_box geom b (ppf: _ t) =
   let pos = ppf.position in
   match ppf.status with
