@@ -41,7 +41,8 @@ let explain got expected ppf =
   if got <> expected then
     let len = min (String.length got) (String.length expected) in
     let i = ref 0 in
-    if len <> 0 then while  got.[!i] = expected.[!i] do incr i done;
+    if len <> 0 then while  got.[!i] = expected.[!i] && !i < len -1
+      do incr i done;
     let sub s = String.sub s (max 0 (!i-10)) (min (!i + 10) (len- !i)) in
     fprintf
       [%fmt "@{<v 0>all:@,%s@,got %d$3     :@,%s@,expected %d$3:@,%s@}"]
@@ -132,6 +133,13 @@ let v_in_hv_in_hv =
            @ oris@]"]
     []
 
+let hh = fprintf
+  [%fmt "@[<v 2>@,\
+         @[<hh>123456@]@,\
+         @[<hh>12345678910@]@,\
+         @[<hh>abcdefghijklmnopqrstuvwxyz@]@,\
+         @]"
+  ] []
 
 
 let () =
@@ -258,5 +266,11 @@ les der
   qui
   primus
   ab
-  oris|}
+  oris|};
+"Fit or hide", hh,
+{|
+  123456
+  12345678910
+  
+  |}
 ]

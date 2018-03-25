@@ -10,6 +10,8 @@ let b n = B, n
 let v n = V, n
 let hv n = HV, n
 let hov n = HoV, n
+let hide = Hide, ()
+let hh = HH, ()
 
 let break ~space ~indent = Formatter.break {space;indent}
 let space x = break ~space:1 ~indent:0 x

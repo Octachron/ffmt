@@ -1,5 +1,12 @@
 exception Unknown_tag
-type box = H  | V of int | HoV of int | HV of int | B of int
+type box =
+    H
+  | V of int
+  | HoV of int
+  | HV of int
+  | B of int
+  | Hide
+  | HH
 type break_data = { space: int; indent: int }
 type break = Break of break_data | Full_break of int
 
@@ -13,5 +20,7 @@ type _ tag +=
   | V: int tag
   | HoV: int tag
   | HV: int tag
+  | HH: unit tag
+  | Hide: unit tag
   | Break: (int * int) tag
   | Full_break: int tag

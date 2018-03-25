@@ -63,7 +63,7 @@ type 'a position =
   }
 
 type suspended = {
-  break:break_data;
+  break:break_data option;
   (** We are in the suspended mode because we don't know how to interpret
       this break yet *)
   after: (suspended_lit, box * int) Bigraded_fqueue.t;
@@ -80,6 +80,9 @@ type status =
   (**We are blocked at an ambiguous break, waiting for the decision on
      how to interpret it *)
 
+  | Hide of { boxes: int }
+  (** We are discarding data waiting for the end of the current hidden box *)
+
 type 'a t = {
   context: open_box_on_the_left list;
   position: 'a position;
@@ -95,7 +98,7 @@ module I = Geometry.Indentation
 
 let box_indent: box -> int = function
   | B n | HV n | HoV n | V n-> n
-  | H -> 0
+  | H | HH | Hide -> 0
 
 let newline_indent ~max_indent ~more pos =
   min (pos.indent + more + box_indent pos.kind) max_indent
@@ -110,7 +113,7 @@ let phyline max_indent more pos =
 
 let reindent n: box -> box = function
   | B _ -> B n | HV _ -> HV n | HoV _ -> HoV n | V _ -> V n
-  | H -> H
+  | H -> H | Hide -> Hide | HH -> HH
 
 let phyreset kind (phy:_ Raw.t) =
   let indent = 0 in
@@ -149,6 +152,11 @@ let commit_resolved_literal max_indent lits c =
 
 let rec advance_to_next_ambiguity geom context stream right c =
   match Q.take_front stream with
+  | Major(((HH:box), _), after) ->
+    (* horizontal or hidden boxes immediately suspend the output until
+       their resolution *)
+    let status = Suspended { break = None; after; right } in
+    make context status c
   | Major ((b , _), rest) ->
     (* When we meet a box without any ambiguity on its position,
        we put the current box on the left stack, and focus on this
@@ -159,21 +167,13 @@ let rec advance_to_next_ambiguity geom context stream right c =
     advance_to_next_ambiguity geom context rest right
       { c with indent; kind = b }
   | Minor(Break b, after) ->
-    begin
-      match c.kind with
+    begin match c.kind with
       | V _ -> (* this happens with suspended V box nested inside other boxes *)
         let right = Move.commit_line 1 right in
         c |> phyline (max_indent geom) b.indent
         |> advance_to_next_ambiguity geom context after right
       | _ ->
-        let right =
-          match c.kind with V _ -> Move.commit_line 1 right | _ -> right in
-        let status =
-          Suspended {
-            break = b;
-            after;
-            right;
-          } in
+        let status = Suspended { break = Some b; after; right } in
         make context status c
     end
   | Minor(Lit s, rest) ->
@@ -181,6 +181,12 @@ let rec advance_to_next_ambiguity geom context stream right c =
     let right = Move.commit_line newlines right in
     advance_to_next_ambiguity geom context rest right c
   | Empty -> make context Direct c
+
+let rec hide context stream count c =
+  match Q.take_front stream with
+  | Major (((Hide:box), _), after) -> hide context after (count +1) c
+  | Major(_, after) | Minor(_,after) -> hide context after (count + 1 ) c
+  | Empty -> make context (Hide {boxes=count}) c
 
 let rec advance_to_next_box max_indent stream right c =
   match Q.take_front stream with
@@ -196,24 +202,27 @@ let rec advance_to_next_box max_indent stream right c =
     advance_to_next_box max_indent stream (Move.commit_line n right) c'
   | Empty -> c, right, Q.empty
 
+let sbreak sd = match sd.break with
+  | None -> { indent = 0; space = 0 }
+  | Some b -> b
+
 let actualize_break geom context sd c =
   let before = c.current in
-  (*let indent =
-    newline_indent ~max_indent:(max_indent geom) ~more:sd.break.indent c in*)
-  let c = newline geom sd.break.indent c in
-  (*  let right = Move.commit_line 1 Move.(sd.right + absolute indent) in*)
+  let br = sbreak sd in
+  let c = newline geom br.indent c in
   match c.kind with
+  | HH -> hide context sd.after 1 c
   | HV n ->
     let indent =
-      newline_indent ~max_indent:(max_indent geom) ~more:sd.break.indent c in
-    let diff = indent - before -sd.break.space in
+      newline_indent ~max_indent:(max_indent geom) ~more:br.indent c in
+    let diff = indent - before - br.space in
     let c, right, stream =
       advance_to_next_box (max_indent geom) sd.after Move.(sd.right +> diff)
         { c with kind = V n } in
     advance_to_next_ambiguity geom context stream right c
   | _ ->
     let right =
-      Move.decrease (before + sd.break.space - c.current) sd.right in
+      Move.decrease (before + br.space - c.current) sd.right in
     advance_to_next_ambiguity geom context sd.after right c
 
 let rec string geom s ppf =
@@ -229,7 +238,7 @@ let rec string geom s ppf =
     else
       let after = Q.push_min (Lit (Str s)) sd.after in
       { ppf with status = Suspended { sd with after; right } }
-
+  | Hide _ -> ppf
 
 
 let reactivate position (context: open_box_on_the_left list) =
@@ -254,19 +263,24 @@ let resolve_box bx stream =
 let coalesce geom context sp c =
   match Q.take_major_back sp.after with
   | Some (rest, (b,_)), last_box_content ->
-    let lit = resolve_box b last_box_content in
-    let after = Q.push_min (Lit lit) rest in
+    let after = match b with
+      | Hide -> rest
+      | _ -> let lit = resolve_box b last_box_content in
+        Q.push_min (Lit lit) rest in
     make context (Suspended {sp with after}) c
   | None, last_box_content ->
     let b = c.kind in
     (*    let c, context = reactivate c context in*)
-    let lit = resolve_box b last_box_content in
-    let c = physpace sp.break.space c in
-    let c = (0, c)
-            |> commit_resolved_literal (max_indent geom) [lit]
-            |> snd in
-    let c, context = reactivate c context in
-    make context Direct c
+    match b with
+    | Hide -> make context Direct c
+    | _ ->
+      let lit = resolve_box b last_box_content in
+      let c = physpace (sbreak sp).space c in
+      let c = (0, c)
+              |> commit_resolved_literal (max_indent geom) [lit]
+              |> snd in
+      let c, context = reactivate c context in
+      make context Direct c
 
 let close_box geom ppf =
   match ppf.status with
@@ -274,6 +288,11 @@ let close_box geom ppf =
     let position, context = reactivate ppf.position ppf.context in
     { ppf with position; context }
   | Suspended sp -> coalesce geom ppf.context sp ppf.position
+  | Hide {boxes=0} ->
+    let position, context = reactivate ppf.position ppf.context in
+    { ppf with position; context }
+  | Hide {boxes} -> { ppf with status = Hide {boxes=boxes - 1} }
+
 
 let eager_indent: box -> _ = function
   | B _ -> true
@@ -287,21 +306,26 @@ let last_active_box pos sp =
 let rec break geom br (ppf: _ t) =
   let c = ppf.position in
   match ppf.status with
+  | Hide _ -> ppf
   | Direct -> begin match c.kind with
+      | Hide -> ppf
       | H -> update ppf (physpace br.space c)
       | V _ -> update ppf (newline geom br.indent c)
-      | b ->
+      | HoV _ | B _ | HV _ | HH as b ->
         if c.current + br.space > geom.G.margin
         || (eager_indent b &&
             c.indent + br.indent + box_indent b < c.last_indent)
         then
-            let kind: box = match c.kind with HV n -> V n | b -> b in
-            { c  with kind }
+          let kind: box = match c.kind with
+            | HV n -> V n
+            | HH -> Hide
+            | HoV _ | B _ | H | V _ | Hide as b -> b in
+          { c  with kind }
             |> newline geom br.indent
             |> update ppf
           else
             let status =
-              Suspended { break = br;
+              Suspended { break = Some br;
                           after = Q.empty;
                           right = Move.pure (c.current + br.space);
                         } in
@@ -323,26 +347,29 @@ let rec break geom br (ppf: _ t) =
     else match c.kind with
       | HoV _ | B _ when not (Q.secondary after) ->
         c
-        |> physpace sd.break.space
+        |> physpace (sbreak sd).space
         |> advance_to_next_ambiguity geom ppf.context after right
       | _ ->
           { ppf with status = Suspended { sd with after; right } }
 
-
 let rec full_break geom br (ppf:_ t) =
   let pos = ppf.position in
   match ppf.status with
+  | Hide _ -> ppf
   | Direct ->
     pos |> newline geom br |> update ppf
   | Suspended sd ->
     match pos.kind with
     | HoV _ | B _ when not (Q.secondary sd.after) ->
-      pos |> physpace sd.break.space
+      pos |> physpace (sbreak sd).space
       |> advance_to_next_ambiguity geom ppf.context sd.after sd.right
       |> full_break geom br
     | _ ->
       pos |> actualize_break geom ppf.context sd |> full_break geom br
 
+let box_always_suspends = function
+  | (HH:box) -> true
+  | _ -> false
 let rec open_box geom b (ppf: _ t) =
   let pos = ppf.position in
   match ppf.status with
@@ -354,7 +381,13 @@ let rec open_box geom b (ppf: _ t) =
       let position = { pos with kind = b; indent = pos.current } in
       let context: open_box_on_the_left list =
         {indent = pos.indent; kind = pos.kind } :: ppf.context in
-      { ppf with context; position }
+      let ppf = { ppf with context; position } in
+      if box_always_suspends b then
+        let status =
+          Suspended {after = Q.empty; break = None;
+                     right = Move.pure position.current} in
+        { ppf with status }
+      else ppf
   | Suspended s ->
     if Move.pos s.right > geom.G.box_margin then
       pos |> actualize_break geom ppf.context s |> open_box geom b
@@ -362,6 +395,7 @@ let rec open_box geom b (ppf: _ t) =
       let status = Suspended
           { s with after = Q.push_maj (b, Move.pos s.right) s.after } in
       { ppf with status }
+  | Hide r -> { ppf with status = Hide { boxes = r.boxes + 1 } }
 
 type ('a,'b) prim = Geometry.t -> 'a -> 'b t -> 'b t
 let start phy =
