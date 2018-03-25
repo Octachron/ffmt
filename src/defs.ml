@@ -9,7 +9,7 @@ type box =
   | If
   | Then
   | Else
-  | Translucid
+  | Translucid of int
 
 type break_data = { space: int; indent: int }
 type break = Break of break_data | Full_break of int

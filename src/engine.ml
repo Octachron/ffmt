@@ -31,11 +31,6 @@ module Move = struct
     | Absolute {nl;_} , Absolute a -> Absolute { a with nl = nl + a.nl}
 
   let absolute n = Absolute { nl=1; indent= n }
-(*
-  let pp ppf = function
-    | Relative n -> Printf.fprintf ppf "+%d" n
-    | Absolute n -> Printf.fprintf ppf "{\\n×%d; +%d}" n.nl n.indent
-*)
   let decrease k = function
     | Relative n -> Relative (n - k)
     | Absolute _ as a -> a
@@ -57,6 +52,12 @@ type event =
   | Newline (** did we convert a break to a newline? *)
   | Hidden (** did we hide a conditional box ?*)
   | Nothing (** nothing interesting happened *)
+(*
+let event ppf = function
+    | Newline -> Format.fprintf ppf "NL"
+    | Hidden -> Format.fprintf ppf "Hidden"
+    | Nothing -> Format.fprintf ppf "Nothing"
+*)
 
 type 'a position =
   {
@@ -101,12 +102,34 @@ let make context status position =
   { context;status; position }
 let update ppf position = make ppf.context ppf.status position
 
+(*
+let debug fmt = Format.eprintf ("debug:" ^^ fmt ^^ "@.")
+
+let pp ppf = function
+  | Relative n -> Printf.fprintf ppf "+%d" n
+  | Absolute n -> Printf.fprintf ppf "{\\n×%d; +%d}" n.nl n.indent
+
+let pp_box ppf: box -> _ = function
+  | Else -> Format.fprintf ppf "else"
+  | If -> Format.fprintf ppf "if"
+  | Then -> Format.fprintf ppf "then"
+  | Translucid _ -> Format.fprintf ppf "translucid"
+  | Hide -> Format.fprintf ppf "hide"
+  | H -> Format.fprintf ppf "h"
+  | V _ -> Format.fprintf ppf "v"
+  | HV _ -> Format.fprintf ppf "hv"
+  | HoV _ -> Format.fprintf ppf "hov"
+  | B _ -> Format.fprintf ppf "b"
+
+*)
+
+
 module G = Geometry
 module I = Geometry.Indentation
 
 let box_indent: box -> int = function
-  | B n | HV n | HoV n | V n-> n
-  | H | If | Then | Else | Hide | Translucid -> 0
+  | B n | HV n | HoV n | V n | Translucid n -> n
+  | H | If | Then | Else | Hide -> 0
 
 let newline_indent ~max_indent ~more pos =
   min (pos.indent + more + box_indent pos.kind) max_indent
@@ -122,7 +145,8 @@ let phyline max_indent more pos =
 
 let reindent n: box -> box = function
   | B _ -> B n | HV _ -> HV n | HoV _ -> HoV n | V _ -> V n
-  | H  | Hide | If | Then | Else | Translucid as b -> b
+  | Translucid _ -> Translucid n
+  | H  | Hide | If | Then | Else  as b -> b
 
 (** Reset indentation after a box is rejected to the left due
     to its potential indentation being greater that the maximum
@@ -141,6 +165,7 @@ let newline geom more pos =
 let physpace  n pos =
   { pos with phy = pos.phy#space n;
     current = n + pos.current; last_event=Nothing }
+
 let phystring s pos =
   let r = Raw.all s in
   { pos with phy = pos.phy#string r;
@@ -225,10 +250,10 @@ let sbreak sd = match sd.break with
 let actualize_break geom context sd c =
   let before = c.current in
   let br = sbreak sd in
-  let c = newline geom br.indent c in
   match c.kind with
   | If -> hide context sd.after 1 { c with last_event = Hidden }
   | HV n ->
+    let c = newline geom br.indent c in
     let indent =
       newline_indent ~max_indent:(max_indent geom) ~more:br.indent c in
     let diff = indent - before - br.space in
@@ -237,6 +262,7 @@ let actualize_break geom context sd c =
         { c with kind = V n } in
     advance_to_next_ambiguity geom context stream right c
   | _ ->
+    let c = newline geom br.indent c in
     let right =
       Move.decrease (before + br.space - c.current) sd.right in
     advance_to_next_ambiguity geom context sd.after right c
@@ -319,14 +345,14 @@ let eager_indent: box -> _ = function
 
 let rec look_for_active_box default after =
   match Q.take_major_back after with
-  | Some(rest, (Translucid,_)), _ ->
+  | Some(rest, (Translucid _ ,_)), _ ->
     look_for_active_box default rest
   | Some(_, (b,indent)), _ -> b, indent
   | None, _ -> default.kind, default.indent
 
 let last_active_box pos sp =
   match Q.peek_major_back sp.after with
-  | Some(Translucid, _) ->
+  | Some(Translucid _ , _) ->
     look_for_active_box pos sp.after
   | Some (b,pos) -> b, pos
   | None ->  pos.kind, pos.indent
@@ -334,11 +360,11 @@ let last_active_box pos sp =
 let active_box ppf =
   let rec search = function
     | [] -> default_box
-    | ({kind=Translucid; _}: open_box_on_the_left) :: q -> search q
+    | ({kind=Translucid _ ; _}: open_box_on_the_left) :: q -> search q
     | a :: _ -> a.kind in
-  if ppf.position.kind <> Translucid then
-    ppf.position.kind else
-    search ppf.context
+  match ppf.position.kind with
+  | Translucid _ -> search ppf.context
+  | _ -> ppf.position.kind
 
 let rec break geom br (ppf: _ t) =
   let c = ppf.position in
@@ -348,7 +374,7 @@ let rec break geom br (ppf: _ t) =
       | Hide -> ppf
       | H -> update ppf (physpace br.space c)
       | V _ -> update ppf (newline geom br.indent c)
-      | HoV _ | B _ | HV _ | If | Then | Else | Translucid as b ->
+      | HoV _ | B _ | HV _ | If | Then | Else | Translucid _ as b ->
         if c.current + br.space > geom.G.margin
         || (eager_indent b &&
             c.indent + br.indent + box_indent b < c.last_indent)
@@ -356,8 +382,8 @@ let rec break geom br (ppf: _ t) =
           let kind: box = match c.kind with
             | HV n -> V n
             | If -> Hide
-            | HoV _ | B _ | H | V _ | Hide | Then | Else | Translucid
-              as b -> b in
+            | HoV _ | B _ | H | V _ | Hide | Then | Else
+            | Translucid _ as b -> b in
           { c  with kind }
             |> newline geom br.indent
             |> update ppf
@@ -405,19 +431,6 @@ let rec full_break geom br (ppf:_ t) =
     | _ ->
       pos |> actualize_break geom ppf.context sd |> full_break geom br
 
-
-let pp_box ppf: box -> _ = function
-  | Else -> Format.fprintf ppf "else"
-  | If -> Format.fprintf ppf "if"
-  | Then -> Format.fprintf ppf "then"
-  | Translucid -> Format.fprintf ppf "translucid"
-  | Hide -> Format.fprintf ppf "hide"
-  | H -> Format.fprintf ppf "h"
-  | V _ -> Format.fprintf ppf "v"
-  | HV _ -> Format.fprintf ppf "hv"
-  | HoV _ -> Format.fprintf ppf "hov"
-  | B _ -> Format.fprintf ppf "b"
-
 let rec open_box geom b (ppf: _ t) =
   let pos = ppf.position in
   match ppf.status with
@@ -429,6 +442,7 @@ let rec open_box geom b (ppf: _ t) =
       let position = { pos with kind = b; indent = pos.current } in
       let context: open_box_on_the_left list =
         {indent = pos.indent; kind = pos.kind } :: ppf.context in
+      let old_ppf = ppf in
       let ppf = { ppf with position; context } in
       begin match (b:box) with
       | If -> (* if boxes always suspend *)
@@ -437,12 +451,14 @@ let rec open_box geom b (ppf: _ t) =
                      right = Move.pure pos.current} in
         { ppf with status }
       | Then when pos.last_event = Nothing  ->
-        let position = { pos with kind = Translucid } in
+        let n = box_indent (active_box old_ppf) in
+        let position = { pos with kind = Translucid n } in
         { ppf with position; context }
       | Else when pos.last_event = Nothing ->
         { ppf with status = Hide { boxes = 1 } }
       | Else ->
-        let position = { pos with kind = Translucid } in
+        let n = box_indent (active_box old_ppf) in
+        let position = { pos with kind = Translucid n } in
         { ppf with position }
       | Then -> { ppf with status = Hide { boxes = 1 } }
       | _ -> ppf
@@ -455,7 +471,6 @@ let rec open_box geom b (ppf: _ t) =
           { s with after = Q.push_maj (b, Move.pos s.right) s.after } in
       { ppf with status }
   | Hide r ->
-    let () = Format.eprintf "hidden |%a| box@." pp_box b in
     { ppf with status = Hide { boxes = r.boxes + 1 } }
 
 type ('a,'b) prim = Geometry.t -> 'a -> 'b t -> 'b t

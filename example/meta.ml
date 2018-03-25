@@ -1,10 +1,14 @@
 open Metafmt
 let fprintf = Printf.fprintf
-
+let flush = Formatter.flush
 
 open Metafmt
 open Combinators
 
+let test_out =
+  Formatter.chan
+    ~geometry:Geometry.{margin=20; box_margin=10; max_indent=15}
+    stdout
 
 let test' world =
   fprintf
@@ -66,7 +70,7 @@ let exec (name,x,expected) =
       fprintf [%fmt "@{<crossed>@{<green>[OK]@}@}"] []
     else
       fprintf [%fmt "@{<red>[FAILURE]@}"] [] in
-  fprintf 
+  fprintf
     [%fmt "@{<v 0> @{<fk>@{<u>Test@}@} @{<i>@{<bold>[%s]@}@}:%t@,%t@}"]
     [name;status; explain res expected] stdout |> ignore
 
@@ -138,11 +142,11 @@ let try0 = fprintf
 
 let hh = fprintf
   [%fmt "@[<v 2>@,\
-         @[<try'>123456@]@,\
-         @[<try'>12345678910@]@,\
-         @[<try'>abcdefghijklmnopqrstuvwxyz@]@[<then'>@,@]@]"
+         @[<try'>123456@]@[<then'>@,@]\
+         @[<try'>12345678@]@[<then'>@,@]\
+         @[<try'>abcdefghijklmnopqrstuvwxyz@]@[<else'>β@]@,\
+         stop@,@]"
   ] []
-
 
 let () =
   List.iter exec [
@@ -272,9 +276,9 @@ les der
 "Fit or hide", hh,
 {|
   123456
-  12345678910
-  
+  12345678
+  β
+  stop
   |};
-"try 0", try0,{|
-α|}
+"try 0", try0,{|α|}
 ]
