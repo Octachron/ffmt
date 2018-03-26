@@ -105,6 +105,11 @@ let rec take_nth: type x l r. (x,l,r) index -> l args -> x * r args =
     | Z, a :: q -> a, q
     | S n, _ :: q -> take_nth n q
 
+let rec skip: type x l r r2. (x,r,r2) index -> (l,r) iargs -> (l,r2) iargs =
+  fun n iargs -> match n, iargs.right with
+    | Z, _ :: right -> { iargs with right }
+    | S n, _ :: right -> skip n { iargs with right }
+
 let take: type x l r r2. (l,r) iargs -> (x,l,r,r2) pos -> x * (l,r2) iargs =
   fun iargs pos ->
     match pos with
@@ -167,6 +172,7 @@ type _ token =
       ; pos:(string,'l,'r2,'r3) pos
       }
     -> <list:'l;pos:'r -> 'r3; .. > notag token
+  | Skip: ('x ,'r,'r2) index -> <pos:'r -> 'r2;list:'l; .. > notag token
 
 type _ t =
   | []:
@@ -196,4 +202,5 @@ let rec (^^): type left right b a k l m fmt.
     | Integer x :: q -> Integer x :: (q ^^ r )
     | Float x :: q -> Float x :: (q ^^ r)
     | String x :: q -> String x :: (q ^^ r)
+    | Skip n :: q -> Skip n :: ( q ^^ r)
 let make x = { all=x; right = x}
