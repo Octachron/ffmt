@@ -148,6 +148,11 @@ let hh = fprintf
          stop@,@]"
   ] []
 
+
+let else' = fprintf
+  [%fmt "@[<hov 0>abc@ @[<then'>β @]defgh@ \
+         @[<else'>α @]efghijklmnopqrstuvwxyz@]"] []
+
 let () =
   List.iter exec [
 "Ppx", test' "κοσμοσ",
@@ -280,5 +285,7 @@ les der
   β
   stop
   |};
-"try 0", try0,{|α|}
+"try 0", try0,{|α|};
+"Conditional boxes in hov", else', {|abc β defgh
+α efghijklmnopqrstuvwxyz|}
 ]
