@@ -28,12 +28,12 @@ type vec = { x:int; y:int}
 let ( +: ) x y = {x;y}
 
 let pp_vec {x;y} = fprintf [%fmt "{x:%d;y:%d}"] [x;y]
-(*
+
 let vec =
   fprintf
-    [%fmt "@{<v 2> %_{ int _*} %a$0@ %a$0@ %a$0@ %a$0@}"]
+    [%fmt "@{<v 2>%_%d %a$0@ %a$0@ %a$0@ %a$0@}"]
     [pp_vec; 1; 1 +: 2; 3 +: 4; 5 +: 6; 7 +: 8]
-*)
+
 let buffer () =
   Formatter.buffer
     ~geometry:Geometry.{margin=20; box_margin=10; max_indent=15}
@@ -220,11 +220,11 @@ w
 t|};
 "Format concatenation", fmt3,
 {|⇒ 1 2⇒ 3 4|};
-(*"Common printer", vec,
-{| 1 {x:1;y:2}
+"Vec: shared common printer", vec,
+{|1 {x:1;y:2}
   {x:3;y:4}
   {x:5;y:6}
-  {x:7;y:8}|};*)
+  {x:7;y:8}|};
 "Nested boxes in hv boxes", boxes_in_hv,
 {|か
 ら

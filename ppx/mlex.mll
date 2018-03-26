@@ -32,6 +32,7 @@
   | SIMPLE of {variant:char; pos: hole }
   | STRING of string_info
   | ALPHA of hole * hole
+  | SKIP of int
 
   | CLOSE_TAG
   | EOF
@@ -69,6 +70,8 @@ let simple = ['b' 'B' 'c' 'C' 't']
 
 rule main = parse
  | any+ as t { TEXT t }
+ | "%" ("_"+ as s) {SKIP (String.length s)}
+ | "%" (num as n) "_" { SKIP (int_of_string n) }
  | "%%" { TEXT "%" }
  | "%a" ("$" (num as n))? ("$" (num as l))? { ALPHA(mpos n,mpos l) }
  | "%" ("-" as align)? ("+" as sign)?

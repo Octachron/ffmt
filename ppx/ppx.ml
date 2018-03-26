@@ -124,9 +124,12 @@ let string loc (r: Mlex.string_info) =
                   pos = [%e hole r.pos] }
   ]
 
+
+
 exception Not_supported
 let rec ast stream =
   let tok, loc = stream () in
+  Ast_helper.default_loc := loc;
   let k x = x @:: ast stream in
   match tok with
   | Mlex.EOF ->  stop
@@ -144,6 +147,7 @@ let rec ast stream =
   | INTEGER r -> k @@ integer loc r
   | FLOAT r -> k @@ float loc r
   | STRING r -> k @@ string loc r
+  | SKIP n -> k @@ [%expr Skip [%e nat (n-1) ] ]
 
 let build ~loc ~path:_ s =
   let frag = ast @@ stream Mlex.main loc s in

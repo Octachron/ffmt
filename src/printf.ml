@@ -102,6 +102,7 @@ let rec eval:
       let _padding, rest = take iargs r.padding in
       let x, rest = take rest r.pos in
       ppf |> string x |> eval q rest
+    | Skip n :: q -> eval q (skip n iargs) ppf
 
 and close_tag: type any n after free b right final.
   bool -> any Defs.tag -> (n, Sem.open_tag) NL.t
