@@ -150,7 +150,7 @@ let hh = fprintf
 
 
 let else' = fprintf
-  [%fmt "@[<hov 0>abc@ @[<then'>β @]defgh@ \
+  [%fmt "@[<hov 0>abc@ @[<then'>β @]@[<else'>γ@]defgh@ @[<then'>Δ@]\
          @[<else'>α @]efghijklmnopqrstuvwxyz@]"] []
 
 let () =

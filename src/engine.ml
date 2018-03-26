@@ -8,7 +8,7 @@ type resolved_lit =
   | Str of string
   | Space of int
   | Newline of int
-  | Box of resolved_lit list
+  | Box of box * resolved_lit list
 type suspended_lit =
     Break of break_data | Lit of resolved_lit
 
@@ -52,12 +52,6 @@ type event =
   | Newline (** did we convert a break to a newline? *)
   | Hidden (** did we hide a conditional box ?*)
   | Nothing (** nothing interesting happened *)
-(*
-let event ppf = function
-    | Newline -> Format.fprintf ppf "NL"
-    | Hidden -> Format.fprintf ppf "Hidden"
-    | Nothing -> Format.fprintf ppf "Nothing"
-*)
 
 type 'a position =
   {
@@ -104,12 +98,13 @@ let update ppf position = make ppf.context ppf.status position
 
 (*
 let debug fmt = Format.eprintf ("debug:" ^^ fmt ^^ "@.")
-
-let pp ppf = function
+*)
+(*let pp ppf = function
   | Relative n -> Printf.fprintf ppf "+%d" n
   | Absolute n -> Printf.fprintf ppf "{\\n×%d; +%d}" n.nl n.indent
+*)
 
-let pp_box ppf: box -> _ = function
+(*let pp_box ppf: box -> _ = function
   | Else -> Format.fprintf ppf "else"
   | If -> Format.fprintf ppf "if"
   | Then -> Format.fprintf ppf "then"
@@ -120,9 +115,13 @@ let pp_box ppf: box -> _ = function
   | HV _ -> Format.fprintf ppf "hv"
   | HoV _ -> Format.fprintf ppf "hov"
   | B _ -> Format.fprintf ppf "b"
-
 *)
-
+(*
+let event ppf = function
+    | Newline -> Format.fprintf ppf "NL"
+    | Hidden -> Format.fprintf ppf "Hidden"
+    | Nothing -> Format.fprintf ppf "Nothing"
+*)
 
 module G = Geometry
 module I = Geometry.Indentation
@@ -184,10 +183,17 @@ let commit_resolved_literal max_indent lits c =
     | Str s -> n, phystring s c
     | Newline more -> n + 1, phyline max_indent more c
     | Space sp -> n, physpace sp c
-    | Box b ->
-      let n, inside =
-        List.fold_left elt (n,{ c with indent = c.current; kind = B 0 }) b in
-      n, { c with current = inside.current; phy = inside.phy } in
+    | Box (bx, b) ->
+      let simple () =
+        let n, inside =
+          List.fold_left elt (n,{ c with indent = c.current; kind = B 0 }) b in
+        n, { c with current = inside.current; phy = inside.phy } in
+      match bx with
+      | Else when c.last_event <> Nothing ->
+        simple ()
+      | Then when c.last_event = Nothing -> simple ()
+      | Else | Then -> 0, c
+      | _ -> simple () in
   List.fold_left elt c lits
 
 let rec advance_to_next_ambiguity geom context stream right c =
@@ -301,7 +307,7 @@ let resolve_box bx stream =
     | Lit s -> s
     | Break b -> translate_break b bx in
   let x = stream |> Sequence.map (translate bx) |> Sequence.to_list in
-  Box x
+  Box (bx,x)
 
 let coalesce geom context sp c =
   match Q.take_major_back sp.after with
