@@ -1,6 +1,6 @@
 exception Unknown_tag
 type box =
-    H
+  | H
   | V of int
   | HoV of int
   | HV of int
@@ -10,6 +10,7 @@ type box =
   | Then
   | Else
   | Translucid of int
+  | Columns of int list
 
 type break_data = { space: int; indent: int }
 type break = Break of break_data | Full_break of int
@@ -29,3 +30,5 @@ type _ tag +=
   | Else: unit tag
   | Break: (int * int) tag
   | Full_break: int tag
+  | Columns: int array tag
+  | Column_switch: unit tag

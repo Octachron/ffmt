@@ -1,19 +1,38 @@
 (** Formatting engine implementation *)
 open Defs
 
-let default_box: box = H
-type open_box_on_the_left = {indent:int;kind:box}
+type box =
+  | H
+  | V of int
+  | HoV of int
+  | HV of int
+  | B of int
+  | Hide
+  | If
+  | Then
+  | Else
+  | Translucid of int
+  | Columns of
+      {
+        subgeometries: Geometry.t list;
+        columns: commands list;
+      }
 
-type resolved_lit =
+and command =
   | Str of string
   | Space of int
   | Newline of int
-  | Box of box * resolved_lit list
+  | Box of box * commands
+
+and commands = command list
+
 type suspended_lit =
-    Break of break_data | Lit of resolved_lit
+    Break of break_data | Lit of command
+
+let default_box: box = H
+type open_box_on_the_left = { indent:int; kind: box }
 
 module Q = Bigraded_fqueue
-
 
 module Move = struct
   type t =
@@ -55,15 +74,31 @@ type event =
 
 type 'a position =
   {
-    phy: 'a Raw.t; (** the underlying driver *)
+    concrete: 'a Raw.t; (** the underlying driver *)
+    symb: Raw.symbolic Raw.t option; (** symbolic driver *)
+    subgeometry: Geometry.t;
     current:int; (** we are currently writing at position *)
-    kind:box; (** with this box context *)
+    kind: box; (** with this box context *)
     indent:int; (** and at this indentation *)
-    last_indent:int
-  (** the previous line break was done with this indent *);
+    last_indent:int;
+    (** the previous line break was done with this indent *)
     last_event: event;
     (** last interesting event *)
   }
+
+type update = { f: 'a. 'a Raw.t -> 'a Raw.t } [@@unboxed]
+let driver {f} ppf = match ppf.symb with
+  | None -> { ppf with concrete = f ppf.concrete }
+  | Some s -> { ppf with symb = Some (f s) }
+(*
+and 'a columns = {
+  fork_point: 'a position;
+  sublayouts: 'a sublayout array;
+  current_column: int;
+}
+
+and 'a sublayout = { geom:Geometry.t; pos: 'a position }
+*)
 
 type suspended = {
   break:break_data option;
@@ -74,7 +109,6 @@ type suspended = {
   right: Move.t (** and we are currently at this position < margin *);
 }
 
-
 type status =
   | Direct
   (** We are directly writing to the logical device *)
@@ -84,7 +118,8 @@ type status =
      waiting for the decision on how to interpret it *)
 
   | Hide of { boxes: int }
-  (** We are discarding data waiting for the end of the current hidden box *)
+  (** We are discarding data waiting for the end of the current
+      hidden box *)
 
 type 'a t = {
   context: open_box_on_the_left list;
@@ -92,8 +127,7 @@ type 'a t = {
   status:status;
 }
 
-let make context status position =
-  { context;status; position }
+let make context status position = { context;status; position }
 let update ppf position = make ppf.context ppf.status position
 
 (*
@@ -128,15 +162,17 @@ module I = Geometry.Indentation
 
 let box_indent: box -> int = function
   | B n | HV n | HoV n | V n | Translucid n -> n
-  | H | If | Then | Else | Hide -> 0
+  | H | If | Then | Else | Hide | Columns _ -> 0
 
 let newline_indent ~max_indent ~more pos =
   min (pos.indent + more + box_indent pos.kind) max_indent
 
 let phyline max_indent more pos =
   let column = newline_indent ~max_indent ~more pos in
+  let pos =
+    driver { f = (fun phy -> phy#break#indent {I.line = 0; column}) }
+      pos in
   { pos with
-    phy = pos.phy#break#indent {I.line = 0; column};
     current = column;
     last_indent = column;
     last_event = Newline
@@ -145,31 +181,34 @@ let phyline max_indent more pos =
 let reindent n: box -> box = function
   | B _ -> B n | HV _ -> HV n | HoV _ -> HoV n | V _ -> V n
   | Translucid _ -> Translucid n
-  | H  | Hide | If | Then | Else  as b -> b
+  | H  | Hide | If | Then | Else | Columns _  as b -> b
 
 (** Reset indentation after a box is rejected to the left due
     to its potential indentation being greater that the maximum
     indentation limit *)
-let phyreset kind (phy:_ Raw.t) =
+let phyreset kind subgeometry (phy:_ Raw.t) =
   let indent = 0 in
   let kind = reindent 0 kind in
-  { phy = phy#break#indent {I.line = 1; column=indent};
+  { concrete = phy#break#indent {I.line = 1; column=indent};
+    symb = None;
     current = indent; indent; last_indent = indent; kind;
-    last_event = Newline (* should this be a separated event ?*)
+    last_event = Newline; (* should this be a separated event ?*)
+    subgeometry;
   }
 
 let newline geom more pos =
   phyline geom.G.max_indent more pos
 
 let physpace  n pos =
-  { pos with phy = pos.phy#space n;
-    current = n + pos.current; last_event=Nothing }
+  let pos = driver { f = fun phy -> phy#space n } pos in
+  { pos with current = n + pos.current; last_event=Nothing }
 
 let phystring s pos =
   let r = Raw.all s in
-  { pos with phy = pos.phy#string r;
-             current = pos.current + pos.phy#len r;
-             last_event = Nothing
+  let pos = driver { f = (fun phy -> phy#string r) } pos in
+  { pos with
+    current = pos.current + pos.concrete#len r;
+    last_event = Nothing
   }
 
 let direct_string context c s  =
@@ -186,8 +225,9 @@ let commit_resolved_literal max_indent lits c =
     | Box (bx, b) ->
       let simple () =
         let n, inside =
-          List.fold_left elt (n,{ c with indent = c.current; kind = B 0 }) b in
-        n, { c with current = inside.current; phy = inside.phy } in
+          List.fold_left elt
+            (n,{ c with indent = c.current; kind = B 0 }) b in
+        n, { c with current = inside.current } in
       match bx with
       | Else when c.last_event <> Nothing ->
         simple ()
@@ -253,7 +293,8 @@ let sbreak sd = match sd.break with
   | None -> { indent = 0; space = 0 }
   | Some b -> b
 
-let actualize_break geom context sd c =
+let actualize_break context sd c =
+  let geom = c.subgeometry in
   let before = c.current in
   let br = sbreak sd in
   match c.kind with
@@ -273,17 +314,17 @@ let actualize_break geom context sd c =
       Move.decrease (before + br.space - c.current) sd.right in
     advance_to_next_ambiguity geom context sd.after right c
 
-let rec string geom s ppf =
+let rec string s ppf =
   match ppf.status with
   | Direct ->
     direct_string ppf.context ppf.position s
   | Suspended sd ->
     let right = let open Move in
-      sd.right +> ppf.position.phy#len (Raw.all s) in
-    if Move.pos right > geom.G.margin then
+      sd.right +> ppf.position.concrete#len (Raw.all s) in
+    if Move.pos right > ppf.position.subgeometry.margin then
          ppf.position
-      |> actualize_break geom ppf.context sd
-      |> string geom s
+      |> actualize_break ppf.context sd
+      |> string s
     else
       let after = Q.push_min (Lit (Str s)) sd.after in
       { ppf with status = Suspended { sd with after; right } }
@@ -299,7 +340,7 @@ let reactivate position (context: open_box_on_the_left list) =
        { position with indent; kind }, q
 
 
-let translate_break (b:break_data) box: resolved_lit =
+let translate_break (b:break_data) box: command =
   if is_vertical box then Newline (b.indent + box_indent box) else Space b.space
 
 let resolve_box bx stream =
@@ -309,7 +350,8 @@ let resolve_box bx stream =
   let x = stream |> Sequence.map (translate bx) |> Sequence.to_list in
   Box (bx,x)
 
-let coalesce geom context sp c =
+let coalesce context sp c =
+  let geom = c.subgeometry in
   match Q.take_major_back sp.after with
   | Some (rest, (b,_)), last_box_content ->
     let after = match b with
@@ -331,12 +373,12 @@ let coalesce geom context sp c =
       let c, context = reactivate c context in
       make context Direct c
 
-let close_box geom ppf =
+let close_box ppf =
   match ppf.status with
   | Direct ->
     let position, context = reactivate ppf.position ppf.context in
     { ppf with position; context }
-  | Suspended sp -> coalesce geom ppf.context sp ppf.position
+  | Suspended sp -> coalesce ppf.context sp ppf.position
   | Hide {boxes=1} ->
     let position, context = reactivate ppf.position ppf.context in
     { position; context; status = Direct }
@@ -372,7 +414,10 @@ let active_box ppf =
   | Translucid _ -> search ppf.context
   | _ -> ppf.position.kind
 
-let rec break geom br (ppf: _ t) =
+let current_geometry ppf = ppf.position.subgeometry
+
+let rec break br (ppf: _ t) =
+  let geom = current_geometry ppf in
   let c = ppf.position in
   match ppf.status with
   | Hide _ -> ppf
@@ -380,7 +425,7 @@ let rec break geom br (ppf: _ t) =
       | Hide -> ppf
       | H -> update ppf (physpace br.space c)
       | V _ -> update ppf (newline geom br.indent c)
-      | HoV _ | B _ | HV _ | If | Then | Else | Translucid _ as b ->
+      | HoV _ | B _ | HV _ | If | Then | Else | Translucid _ | Columns _ as b ->
         if c.current + br.space > geom.G.margin
         || (eager_indent b &&
             c.indent + br.indent + box_indent b < c.last_indent)
@@ -389,7 +434,7 @@ let rec break geom br (ppf: _ t) =
             | HV n -> V n
             | If -> Hide
             | HoV _ | B _ | H | V _ | Hide | Then | Else
-            | Translucid _ as b -> b in
+            | Translucid _ | Columns _ as b -> b in
           { c  with kind }
             |> newline geom br.indent
             |> update ppf
@@ -411,9 +456,9 @@ let rec break geom br (ppf: _ t) =
     || (eager_indent b && c.indent + br.indent + box_indent b < c.last_indent)
     then
       c
-      |> actualize_break geom ppf.context
+      |> actualize_break ppf.context
         { sd with right = Move.commit_line 1 sd.right}
-      |> break geom br
+      |> break  br
     else match c.kind with
       | HoV _ | B _ when not (Q.secondary after) ->
         c
@@ -422,7 +467,8 @@ let rec break geom br (ppf: _ t) =
       | _ ->
           { ppf with status = Suspended { sd with after; right } }
 
-let rec full_break geom br (ppf:_ t) =
+let rec full_break br (ppf:_ t) =
+  let geom = current_geometry ppf in
   let pos = ppf.position in
   match ppf.status with
   | Hide _ -> ppf
@@ -433,17 +479,37 @@ let rec full_break geom br (ppf:_ t) =
     | HoV _ | B _ when not (Q.secondary sd.after) ->
       pos |> physpace (sbreak sd).space
       |> advance_to_next_ambiguity geom ppf.context sd.after sd.right
-      |> full_break geom br
+      |> full_break br
     | _ ->
-      pos |> actualize_break geom ppf.context sd |> full_break geom br
+      pos |> actualize_break ppf.context sd |> full_break br
 
-let rec open_box geom b (ppf: _ t) =
+let columns ws pos =
+  let geom = pos.subgeometry in
+  let sum = List.fold_left (+) 0 ws in
+  let space = float (geom.margin - pos.current) in
+  let choice w =
+    let r = float w /. float sum in
+    let m = r *. space /. float geom.margin in
+    Geometry.( m *. geom ) in
+  Columns {
+    subgeometries = List.map choice ws;
+    columns = []
+  }
+
+let lift_box pos: Defs.box -> box = function
+  | H -> H | V n -> V n | B n -> B n | HoV n -> HoV n
+  | HV n -> HV n | Translucid n -> Translucid n
+  | Else -> Else | Then -> Then | If -> If | Hide -> Hide
+  | Columns ws -> columns ws pos
+
+let rec open_box b (ppf: _ t) =
+  let geom = current_geometry ppf in
   let pos = ppf.position in
   match ppf.status with
   | Direct ->
     if pos.current > geom.G.box_margin then
-      phyreset pos.kind pos.phy |> update ppf
-      |> open_box geom b
+      phyreset pos.kind geom pos.concrete |> update ppf
+      |> open_box b
     else
       let position = { pos with kind = b; indent = pos.current } in
       let context: open_box_on_the_left list =
@@ -471,7 +537,7 @@ let rec open_box geom b (ppf: _ t) =
       end
   | Suspended s ->
     if Move.pos s.right > geom.G.box_margin then
-      pos |> actualize_break geom ppf.context s |> open_box geom b
+      pos |> actualize_break ppf.context s |> open_box b
     else
       let status = Suspended
           { s with after = Q.push_maj (b, Move.pos s.right) s.after } in
@@ -479,11 +545,22 @@ let rec open_box geom b (ppf: _ t) =
   | Hide r ->
     { ppf with status = Hide { boxes = r.boxes + 1 } }
 
-type ('a,'b) prim = Geometry.t -> 'a -> 'b t -> 'b t
-let start phy =
-  { status = Direct;
-    position= {current=0;indent=0; kind=default_box; last_indent=0; phy; last_event = Nothing };
-    context = [] }
+let open_box b ppf =
+  open_box (lift_box ppf.position b) ppf
 
-let close_box geom () = close_box geom
-let flush (ppf: _ t) = ppf.position.phy#flush
+type ('a,'b) prim = 'a -> 'b t -> 'b t
+let start subgeometry phy =
+  make []
+    Direct
+    {
+      current=0;indent=0;
+      kind=default_box;
+      last_indent=0;
+      concrete = phy;
+      symb = None;
+      last_event = Nothing;
+      subgeometry
+    }
+
+let close_box () = close_box
+let flush (ppf: _ t) = ppf.position.concrete#flush

@@ -9,13 +9,14 @@ module Sem = Tagsem
 
 module NL = Ft.Nlist
 
-type open_tag = Open_tag : {tag: 'any D.tag; with_box: bool } -> open_tag
+type open_tag =
+    Open_tag : {tag: 'any D.tag; with_box: bool } -> open_tag
 
 type ('a,'b) t = ('a,'b) Ft.t
 
 let with_sem f ?(geometry=Geometry.default) ?(tags=[Sem.box]) x: ('a,Ft.z) t =
   { Ft.tag_semantic=tags; geometry; open_tags = NL.[];
-    layout_engine = E.start ( f x ) }
+    layout_engine = E.start geometry ( f x ) }
 
 let chan ?geometry = with_sem (new Raw.chan) ?geometry
 let buffer ?geometry = with_sem (new Raw.buffer) ?geometry
@@ -32,7 +33,7 @@ type exn += Mismatched_close: {expected:'any Defs.tag; got:'other Defs.tag}
   -> exn
 
 let lift f s (ppf: _ t) =
-  { ppf with layout_engine = f ppf.geometry s ppf.layout_engine }
+  { ppf with layout_engine = f s ppf.layout_engine }
 
 let string x = lift E.string x
 let open_box x = lift E.open_box x
