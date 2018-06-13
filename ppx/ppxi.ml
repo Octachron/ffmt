@@ -1,6 +1,6 @@
 open Ppx_core.Light
 
-let name = "stringi-ppx"
+let name = "freefmt-ppx"
 
 
 let (@?) lex loc =

@@ -5,24 +5,24 @@
 
 
 (library (
- (public_name metafmt-ppx-i)
+ (public_name freefmt-ppx-i)
  (name ppxi)
  (wrapped false)
  (modules (Ppxi Lex))
  (preprocess (pps (ppx_tools_versioned.metaquot_405)))
  (kind ppx_rewriter)
- (ppx_runtime_libraries (metafmt))
+ (ppx_runtime_libraries (freefmt))
  (libraries (ppx_core ppx_driver))
 ) )
 
 
 (library (
- (public_name metafmt-ppx)
+ (public_name freefmt-ppx)
  (name ppx)
  (wrapped false)
  (modules (Ppx Mlex))
  (preprocess (pps (ppx_tools_versioned.metaquot_405)))
  (kind ppx_rewriter)
- (ppx_runtime_libraries (metafmt))
+ (ppx_runtime_libraries (freefmt))
  (libraries (ppx_core ppx_driver))
 ) )

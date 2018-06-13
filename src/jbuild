@@ -1,8 +1,8 @@
 (jbuild_version 1)
 
 (library (
-         (name metafmt)
-         (public_name metafmt)
+         (name freefmt)
+         (public_name freefmt)
          (libraries (containers.data sequence))
  )
 )

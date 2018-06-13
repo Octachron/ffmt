@@ -1,11 +1,11 @@
-name: "metafmt-ppx"
+name: "freefmt-ppx-i"
 version:"0.1"
 opam-version: "1.2"
 maintainer: "Florian Angeletti <octa@polychoron.fr>"
 authors: "Florian Angeletti <octa@polychoron.fr>"
-dev-repo: "git+https://github.com/Octachron/orec"
-homepage: "https://github.com/Octachron/orec"
-bug-reports: "https://github.com/Octachron/orec/issues"
+dev-repo: "git+https://github.com/Octachron/freefmt"
+homepage: "https://github.com/Octachron/freefmt"
+bug-reports: "https://github.com/Octachron/freefmt/issues"
 
 build:[
  ["jbuilder" "build" "-p" name "-j" jobs]
@@ -18,5 +18,5 @@ build-doc:[
 
 depends: [
   "jbuilder" {build}
-  "stringi"
+  "freefmt"
   ]

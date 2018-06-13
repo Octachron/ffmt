@@ -4,7 +4,7 @@
             (name interpolation)
             (modules (Interpolation))
             (preprocess (pps (ppxi)))
-            (libraries (metafmt))
+            (libraries (freefmt))
 ))
 
 
@@ -12,7 +12,7 @@
             (name meta)
             (modules (Meta))
             (preprocess (pps (ppx)))
-            (libraries (metafmt))
+            (libraries (freefmt))
 ))
 
 

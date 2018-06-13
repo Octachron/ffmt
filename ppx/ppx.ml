@@ -1,6 +1,6 @@
 open Ppx_core.Light
 
-let name = "metafmt-ppx"
+let name = "freefmt-ppx"
 
 let (@?) lex loc =
   lex.Lexing.lex_start_p <- loc.loc_start;
