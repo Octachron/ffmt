@@ -1,0 +1,14 @@
+
+(tests
+  (names interpolation)
+  (modules Interpolation)
+  (preprocess (pps freefmt_ppxi))
+  (libraries freefmt)
+)
+
+(tests
+  (names meta)
+  (modules Meta)
+  (preprocess (pps freefmt_ppx))
+  (libraries freefmt)
+)

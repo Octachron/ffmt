@@ -1,8 +1,0 @@
-(jbuild_version 1)
-
-(library (
-         (name freefmt)
-         (public_name freefmt)
-         (libraries (containers.data sequence))
- )
-)

@@ -1,8 +1,7 @@
-open Metafmt
+open Freefmt
 let fprintf = Printf.fprintf
 let flush = Formatter.flush
 
-open Metafmt
 open Combinators
 
 let test_out =

@@ -15,7 +15,7 @@ type box =
   | Columns of
       {
         subgeometries: Geometry.t list;
-        columns: commands list;
+        columns: Raw.symbolic list list;
       }
 
 and command =
@@ -75,7 +75,7 @@ type event =
 type 'a position =
   {
     concrete: 'a Raw.t; (** the underlying driver *)
-    symb: Raw.symbolic Raw.t option; (** symbolic driver *)
+    symb: Raw.free option; (** symbolic driver *)
     subgeometry: Geometry.t;
     current:int; (** we are currently writing at position *)
     kind: box; (** with this box context *)
@@ -343,12 +343,13 @@ let reactivate position (context: open_box_on_the_left list) =
 let translate_break (b:break_data) box: command =
   if is_vertical box then Newline (b.indent + box_indent box) else Space b.space
 
-let resolve_box bx stream =
-  let translate bx = function
+let resolve bx stream =
+    let translate bx = function
     | Lit s -> s
     | Break b -> translate_break b bx in
-  let x = stream |> Sequence.map (translate bx) |> Sequence.to_list in
-  Box (bx,x)
+  stream |> Sequence.map (translate bx) |> Sequence.to_list
+
+let resolve_box bx stream = Box(bx, resolve bx stream)
 
 let coalesce context sp c =
   let geom = c.subgeometry in
@@ -548,11 +549,23 @@ let rec open_box b (ppf: _ t) =
 let open_box b ppf =
   open_box (lift_box ppf.position b) ppf
 
-type ('a,'b) prim = 'a -> 'b t -> 'b t
-let start subgeometry phy =
-  make []
-    Direct
-    {
+type error =
+  | Too_many_columns
+  | Not_a_columns_box
+
+exception Column_error of error
+let column_error error = raise (Column_error error)
+
+let new_column raw box = match raw, box with
+  | Some raw, Columns {subgeometries=a :: q; columns } ->
+    Columns { subgeometries = q; columns = raw#flush :: columns },
+    a, new Raw.free
+  | Some _, Columns { subgeometries = []; _ } -> column_error Too_many_columns
+  | _ -> column_error Not_a_columns_box
+
+
+let make_pos phy subgeometry =
+      {
       current=0;indent=0;
       kind=default_box;
       last_indent=0;
@@ -561,6 +574,54 @@ let start subgeometry phy =
       last_event = Nothing;
       subgeometry
     }
+
+
+let start subgeometry phy =
+  make [] Direct (make_pos phy subgeometry)
+
+let column_switch () ppf =
+  match ppf.status with
+  | Hide _ -> ppf
+  | Direct ->
+    let pos = ppf.position in
+    let kind, subgeometry, symb = new_column pos.symb pos.kind in
+    { ppf with position = { pos with kind; subgeometry; symb = Some symb } }
+  | Suspended sd ->
+    match Q.take_major_back sd.after with
+    | Some ( rest, (Columns _ as b, bpos)) , s ->
+      let pos = ppf.position in
+      let box, _ = last_active_box pos sd in
+      let _, phy = commit_resolved_literal 0
+          (resolve box s)
+          (0, make_pos (new Raw.free) pos.subgeometry ) in
+      let kind, subgeometry, symb = new_column (Some phy.concrete) b in
+      let position = { pos with kind; subgeometry; symb = Some symb } in
+      let after = Q.push_maj (kind,bpos) rest in
+      let status = Suspended { sd with after } in
+      { ppf with position; status }
+    | _ -> column_error Not_a_columns_box
+
+
+let rec commit_column ppf = function
+  | Raw.Break :: _ as l -> l, ppf
+  | Space n :: q -> commit_column (ppf#space n) q
+  | Indent i :: q -> commit_column (ppf#indent i) q
+  | String sub :: q -> commit_column (ppf#string sub) q
+  | [] -> [], ppf
+
+let _commit_columns k columns ppf =
+  if k = 0 then ppf, columns
+  else
+    let ppf = ref ppf in
+    let columns =
+      Array.map (fun x ->
+          let s, p = commit_column !ppf x in
+          ppf := p; s
+        ) columns in
+    !ppf, columns
+
+type ('a,'b) prim = 'a -> 'b t -> 'b t
+
 
 let close_box () = close_box
 let flush (ppf: _ t) = ppf.position.concrete#flush

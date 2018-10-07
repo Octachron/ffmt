@@ -1,4 +1,4 @@
-open Ppx_core.Light
+open Ppxlib
 
 let name = "freefmt-ppx"
 
@@ -15,8 +15,8 @@ let stream lex loc s =
   fun () -> lex lexbuf,
             loc lexbuf.lex_start_p lexbuf.lex_curr_p
 
-let stop = [%expr [] ]
-let (@::) x y = [%expr [%e x] :: [%e y] ]
+let stop loc = [%expr [] ]
+let mkcons loc x y = [%expr [%e x] :: [%e y] ]
 
 let str loc x = Ast_builder.Default.estring ~loc x
 
@@ -25,14 +25,14 @@ let subparser loc x =
   let lexbuf = Lexing.from_string x in
   Parser.parse_expression Lexer.token (lexbuf @? loc)
 
-let implicit  = function
+let implicit loc = function
   | "d" -> [%expr int]
   | "s" -> [%expr string]
   | "f" -> [%expr float]
   | "B" | "b" -> [%expr bool]
   | _ -> [%expr int]
 
-let positional n arg  = match n with
+let positional loc n arg  = match n with
   | "d" -> [%expr int [%e arg] ]
   | "s" -> [%expr string [%e arg]]
   | "f" -> [%expr float [%e arg] ]
@@ -41,9 +41,9 @@ let positional n arg  = match n with
   | _ -> [%expr int]
 
 
-let rec nat n =
+let rec nat loc n =
   if n <= 0 then [%expr Z]
-  else [%expr S [%e nat (n-1)]]
+  else [%expr S [%e nat loc (n-1)]]
 
 let nat' n=
   let rec close n = if n = 0 then [] else ")" :: close (n-1) in
@@ -92,8 +92,9 @@ let frag loc s=
 
 let rec ast stream =
   let tok, loc = stream () in
+  let (@::) = mkcons loc in
   match tok with
-  | Lex.EOF ->  stop
+  | Lex.EOF ->  stop loc
   | TEXT t ->
     [%expr Literal [%e str loc t] ] @:: ast stream
   | FRAG s ->
@@ -118,14 +119,16 @@ let rec ast stream =
     [%expr Captured (Size.(S Z), fun { right = a :: _; _ } -> a)]
     @:: ast stream
   | IMPLICIT_FRAG n ->
-    [%expr Captured (Size.(S Z),
-                     fun { right = a :: _; _ } -> [%e implicit n] a)]
+    [%expr Captured
+        (Size.(S Z),
+         fun { right = a :: _; _ } -> [%e implicit loc n] a)
+    ]
     @:: ast stream
 
   | POS_IMPLICIT_FRAG ("a",pos) ->
     let eone = ge "one" ~loc in
     let pone = gp "one" ~loc in
-    let arg = [%expr nth __iargs__ [%e nat pos]] in
+    let arg = [%expr nth __iargs__ [%e nat loc pos]] in
     [%expr
       Captured (Size.(S Z), fun ({ right =[%p pone] :: _; _ } as __iargs__)
                   -> [%e arg] [%e eone] )]
@@ -134,8 +137,10 @@ let rec ast stream =
   | POS_IMPLICIT_FRAG (n,pos) ->
     let pargs = gp "iargs" ~loc in
     let eargs = ge "iargs" ~loc in
-    let arg = [%expr nth [%e eargs] [%e nat pos]] in
-    [%expr Captured (Size.Z, fun [%p pargs] -> [%e positional n arg] )]
+    let arg = [%expr nth [%e eargs] [%e nat loc pos]] in
+    [%expr Captured
+        (Size.Z, fun [%p pargs] -> [%e positional loc n arg] )
+    ]
     @:: ast stream
   | FULL_BREAK n ->
     [%expr Point_tag(Defs.Full_break, [%e B.eint ~loc n])] @:: ast stream
@@ -144,7 +149,7 @@ let rec ast stream =
 
 let build ~loc ~path:_ s =
   let frag = ast @@ stream Lex.main loc s in
-  [%expr Metafmt.Interpolation.( [%e frag ] ) ]
+  [%expr Freefmt.Interpolation.( [%e frag ] ) ]
 
 
 
@@ -156,4 +161,6 @@ let extension =
     Ast_pattern.(single_expr_payload @@ estring __ )
     build
 
-let () = Ppx_driver.register_transformation name ~extensions:[extension]
+let rule = Context_free.Rule.extension extension
+
+let () = Driver.register_transformation name ~extensions:[extension]

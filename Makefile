@@ -1,7 +1,7 @@
 all: runtest lib
 
 lib:
-	jbuilder build --dev @install
+	dune build @install
 
 runtest: lib
-	jbuilder runtest --dev --force
+	dune runtest --force

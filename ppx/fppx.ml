@@ -1,4 +1,4 @@
-open Ppx_core.Light
+open Ppxlib
 
 let name = "freefmt-ppx"
 
@@ -14,8 +14,8 @@ let stream lex loc s =
   fun () -> lex lexbuf,
             loc lexbuf.lex_start_p lexbuf.lex_curr_p
 
-let stop = [%expr [] ]
-let (@::) x y = [%expr [%e x] :: [%e y] ]
+let stop loc = [%expr [] ]
+let mkcons loc x y = [%expr [%e x] :: [%e y] ]
 
 let str loc x = Ast_builder.Default.estring ~loc x
 
@@ -24,7 +24,7 @@ let subparser loc x =
   Parser.parse_expression Lexer.token (lexbuf @? loc)
 
 
-let typ  = function
+let typ loc  = function
   | "d" -> [%expr Int]
   | "s" -> [%expr String]
   | "f" -> [%expr Float]
@@ -32,7 +32,7 @@ let typ  = function
 
 exception Not_implemented_yet
 
-let s t = function
+let s loc t = function
   | "d" ->
     [%expr Integer { core = Int Variant.int;
                      padding = implicit;
@@ -45,29 +45,29 @@ let s t = function
                            padding=implicit; pos=[%e t] } ]
   | _ -> raise Not_implemented_yet
 
-let rec nat n =
+let rec nat loc n =
   if n <= 0 then [%expr Z]
-  else [%expr S [%e nat (n-1)]]
+  else [%expr S [%e nat loc (n-1)]]
 
-let relative n = [%expr Relative [%e nat n]]
-let absolute n = [%expr Absolute [%e nat n]]
+let relative loc n = [%expr Relative [%e nat loc n]]
+let absolute loc n = [%expr Absolute [%e nat loc n]]
 
 module B = Ast_builder.Default
 
-let hole = function
-  | Mlex.Abs n -> absolute n
-  | Mlex.Rel n -> relative n
+let hole loc = function
+  | Mlex.Abs n -> absolute loc n
+  | Mlex.Rel n -> relative loc n
 
 let param loc (x:Mlex.param) = match x with
-  | Abs n -> absolute n
-  | Rel n -> relative n
+  | Abs n -> absolute loc n
+  | Rel n -> relative loc n
   | No -> [%expr Int_constant None]
   | Const i -> [%expr Int_const (Some [%e B.eint ~loc i]) ]
 
-let simple pos = function
-  | 't' -> [%expr Theta [%e hole pos]]
-  | 'b' | 'B' -> [%expr S(Bool,[%e hole pos])]
-  | 'c' | 'C' -> [%expr S(Char,[%e hole pos])]
+let simple loc pos = function
+  | 't' -> [%expr Theta [%e hole loc pos]]
+  | 'b' | 'B' -> [%expr S(Bool,[%e hole loc pos])]
+  | 'c' | 'C' -> [%expr S(Char,[%e hole loc pos])]
   | _ -> assert false
 
 let integer loc (r:Mlex.integer_info) =
@@ -93,7 +93,7 @@ let integer loc (r:Mlex.integer_info) =
   in
   [%expr Integer { variant=[%e v]; core = [%e typ];
                    padding=[%e param loc r.padding];
-                   pos=[%e hole r.pos]}
+                   pos=[%e hole loc r.pos]}
   ]
 
 let float loc (r:Mlex.float_info) =
@@ -112,7 +112,7 @@ let float loc (r:Mlex.float_info) =
   [%expr Float { variant=[%e v];
                  padding=[%e param loc r.padding];
                  precision=[%e param loc r.precision];
-                 pos=[%e hole r.pos]}
+                 pos=[%e hole loc r.pos]}
   ]
 
 
@@ -121,7 +121,7 @@ let string loc (r: Mlex.string_info) =
   let a = if r.left_align then [%expr Left] else [%expr Right] in
   [%expr String { variant = { reflect = [%e re]; align=[%e a] };
                   padding = [%e param loc r.padding];
-                  pos = [%e hole r.pos] }
+                  pos = [%e hole loc r.pos] }
   ]
 
 
@@ -130,9 +130,10 @@ exception Not_supported
 let rec ast stream =
   let tok, loc = stream () in
   Ast_helper.default_loc := loc;
+  let (@::) = mkcons loc in
   let k x = x @:: ast stream in
   match tok with
-  | Mlex.EOF ->  stop
+  | Mlex.EOF ->  stop loc
   | TEXT t -> k [%expr Literal [%e str loc t] ]
   | OPEN_DEFAULT_TAG -> k [%expr Open_tag(B,1)]
   | OPEN_TAG s -> k [%expr Open_tag [%e subparser loc s] ]
@@ -142,16 +143,16 @@ let rec ast stream =
     and indent = Ast_builder.Default.eint ~loc indent in
     k [%expr Point_tag(Defs.Break, ([%e space], [%e indent])) ]
   | FULL_BREAK n -> k [%expr Point_tag(Defs.Full_break, [%e B.eint ~loc n])]
-  | ALPHA(a,b) -> k [%expr Alpha([%e hole a],[%e hole b]) ]
-  | SIMPLE {variant; pos} -> k @@ simple pos variant
+  | ALPHA(a,b) -> k [%expr Alpha([%e hole loc a],[%e hole loc b]) ]
+  | SIMPLE {variant; pos} -> k @@ simple loc pos variant
   | INTEGER r -> k @@ integer loc r
   | FLOAT r -> k @@ float loc r
   | STRING r -> k @@ string loc r
-  | SKIP n -> k @@ [%expr Skip [%e nat (n-1) ] ]
+  | SKIP n -> k @@ [%expr Skip [%e nat loc (n-1) ] ]
 
 let build ~loc ~path:_ s =
   let frag = ast @@ stream Mlex.main loc s in
-  [%expr Metafmt.Fmt.( [%e frag ] ) ]
+  [%expr Freefmt.Fmt.( [%e frag ] ) ]
 
 
 
@@ -163,4 +164,4 @@ let extension =
     Ast_pattern.(single_expr_payload @@ estring __ )
     build
 
-let () = Ppx_driver.register_transformation name ~extensions:[extension]
+let () = Driver.register_transformation name ~extensions:[extension]

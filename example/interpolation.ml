@@ -1,4 +1,4 @@
-open Metafmt
+open Freefmt
 open Combinators
 
 let fprintf = Iprintf.fprintf
