@@ -43,7 +43,7 @@ class chan ch =
     done; self
     method break = output_string ch "\n"; self
     method indent n = self#space n.column
-    method flush = Pervasives.flush ch
+    method flush = flush ch
   end
 
 type symbolic =

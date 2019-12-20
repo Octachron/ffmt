@@ -21,8 +21,8 @@ let with_sem f ?(geometry=Geometry.default) ?(tags=[Sem.box]) x: ('a,Ft.z) t =
 let chan ?geometry = with_sem (new Raw.chan) ?geometry
 let buffer ?geometry = with_sem (new Raw.buffer) ?geometry
 
-let stdout = chan Pervasives.stdout
-let stderr = chan Pervasives.stderr
+let stdout = chan stdout
+let stderr = chan stderr
 
 
 type tag_name= Name: 'any D.tag -> tag_name
