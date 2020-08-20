@@ -6,7 +6,7 @@ type ('a,'b) answer =
 
 val take_front: ('a,'b) t -> ('a,'b) answer
 val take_back: ('a,'b) t -> ('a,'b) answer
-val take_major_back:('a,'b) t -> (('a,'b) t * 'b) option * 'a Iter.t
+val take_major_back:('a,'b) t -> (('a,'b) t * 'b) option * 'a Seq.t
 
 val peek_major_back:('a,'b) t -> 'b option
 

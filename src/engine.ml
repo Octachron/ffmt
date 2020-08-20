@@ -347,7 +347,7 @@ let resolve bx stream =
     let translate bx = function
     | Lit s -> s
     | Break b -> translate_break b bx in
-  stream |> Iter.map (translate bx) |> Iter.to_list
+  stream |> Seq.map (translate bx) |> List.of_seq
 
 let resolve_box bx stream = Box(bx, resolve bx stream)
 
