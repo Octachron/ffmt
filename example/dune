@@ -12,3 +12,18 @@
   (preprocess (pps ffmt_ppx))
   (libraries ffmt)
 )
+
+
+(tests
+  (names readme)
+  (modules Readme)
+  (preprocess (pps ffmt_ppx))
+  (libraries ffmt)
+)
+
+(tests
+  (names readme_bis)
+  (modules Readme_bis)
+  (preprocess (pps ffmt_ppxi))
+  (libraries ffmt)
+)
