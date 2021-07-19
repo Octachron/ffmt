@@ -1,21 +1,21 @@
 name: "ffmt"
 version:"0.1"
-opam-version: "1.2"
+opam-version: "2.0"
 maintainer: "Florian Angeletti <octa@polychoron.fr>"
 authors: "Florian Angeletti <octa@polychoron.fr>"
 dev-repo: "git+https://github.com/Octachron/ffmt"
 homepage: "https://github.com/Octachron/ffmt"
 bug-reports: "https://github.com/Octachron/ffmt/issues"
-
+synopsis: "Format string experimentations"
+description: "Experiences with reimplementing the format library without direct compiler support"
 build:[
- ["jbuilder" "build" "-p" name "-j" jobs]
-]
-
-build-doc:[
-  [ "jbuilder" "build" "-p" name "-j" jobs "@doc" ]
+ ["dune" "build" "-p" name "-j" jobs]
 ]
 
 
 depends: [
-  "jbuilder" {build}
-  ]
+  "dune"
+  "containers-data"
+  "oseq"
+  "iter"
+ ]
