@@ -20,6 +20,6 @@ let stdout =
     let earth = string "Earth" in
     let one = int 1 in
     stdout
-    |> fp {%fmt|Hello %{earth}! |} ["Earth"]
-    |> fp {%fmt|%{one} + %{float 2.} = %{string "3"}|} [1;2.;"3"]
+    |> fpi {%fmt|Hello %{earth}! |}
+    |> fpi {%fmt|%{one} + %{float 2.} = %{string "3"}|}
 ```
