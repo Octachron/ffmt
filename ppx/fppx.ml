@@ -152,7 +152,7 @@ let rec ast stream =
 
 let build ~loc ~path:_ s =
   let frag = ast @@ stream Mlex.main loc s in
-  [%expr Freefmt.Fmt.( [%e frag ] ) ]
+  [%expr Ffmt.Fmt.( [%e frag ] ) ]
 
 
 
