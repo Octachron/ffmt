@@ -1,4 +1,4 @@
-open Freefmt
+open Ffmt
 let fprintf = Printf.fprintf
 let flush = Formatter.flush
 

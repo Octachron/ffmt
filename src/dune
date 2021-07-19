@@ -1,6 +1,6 @@
 
 (library
-  (name freefmt)
-  (public_name freefmt)
+  (name ffmt)
+  (public_name ffmt)
   (libraries containers-data oseq iter)
 )

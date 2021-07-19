@@ -1,6 +1,6 @@
 open Ppxlib
 
-let name = "freefmt-ppx"
+let name = "ffmt-ppx"
 
 let (@?) lex loc =
   lex.Lexing.lex_start_p <- loc.loc_start;

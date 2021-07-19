@@ -1,11 +1,11 @@
-name: "freefmt-ppx-i"
+name: "ffmt"
 version:"0.1"
 opam-version: "1.2"
 maintainer: "Florian Angeletti <octa@polychoron.fr>"
 authors: "Florian Angeletti <octa@polychoron.fr>"
-dev-repo: "git+https://github.com/Octachron/freefmt"
-homepage: "https://github.com/Octachron/freefmt"
-bug-reports: "https://github.com/Octachron/freefmt/issues"
+dev-repo: "git+https://github.com/Octachron/ffmt"
+homepage: "https://github.com/Octachron/ffmt"
+bug-reports: "https://github.com/Octachron/ffmt/issues"
 
 build:[
  ["jbuilder" "build" "-p" name "-j" jobs]
@@ -18,5 +18,4 @@ build-doc:[
 
 depends: [
   "jbuilder" {build}
-  "freefmt"
   ]

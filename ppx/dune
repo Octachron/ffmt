@@ -3,24 +3,24 @@
 
 
 (library
- (public_name freefmt-ppx-i)
- (name freefmt_ppxi)
+ (public_name ffmt-ppx-i)
+ (name ffmt_ppxi)
  (wrapped false)
  (modules Ppxi Lex)
  (preprocess (pps ppxlib.metaquot))
  (kind ppx_rewriter)
- (ppx_runtime_libraries freefmt)
+ (ppx_runtime_libraries ffmt)
  (libraries ppxlib)
 )
 
 
 (library
- (public_name freefmt-ppx)
- (name freefmt_ppx)
+ (public_name ffmt-ppx)
+ (name ffmt_ppx)
  (wrapped false)
  (modules Fppx Mlex)
  (preprocess (pps ppxlib.metaquot))
  (kind ppx_rewriter)
- (ppx_runtime_libraries freefmt)
+ (ppx_runtime_libraries ffmt)
  (libraries ppxlib)
 )

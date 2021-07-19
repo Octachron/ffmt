@@ -1,4 +1,4 @@
-open Freefmt
+open Ffmt
 open Combinators
 
 let fprintf = Iprintf.fprintf
@@ -28,26 +28,21 @@ let test s =
 
 let test' world =
   fprintf
-    [%fmt "@{<box 1>123: @{<box 1>今日は %{string world} N°%d!@ %s$1%d$0?@ \
-           π=%{$2 $3} or %{float __*}!@}@ \
-           a list:@ @{<v 2>1@ 23@ 4567@ 89ABCDE@ 123456@}@ abcdef@}\
-           @{<hv 0>NCKLQ@ LAKCM@ ABCDEF@ CNKSS@ XLAXMA@}\
-          "
-    ]
+    {%fmt|@{<box 1>123: @{<box 1>今日は %{string world} N°%d!@ %s$1%d$0?@ π=%{$2 $3} or %{float __*}!@}@ a list:@ @{<v 2>1@ 23@ 4567@ 89ABCDE@ 123456@}@ abcdef@}@{<hv 0>NCKLQ@ LAKCM@ ABCDEF@ CNKSS@ XLAXMA@}|}
     [1; "How is your day N°"; float; 3.1415926535 ]
 
 
 let structural =
-  fprintf [%fmt "@[<box 1>12@[<v 1> -5@ -6@ -7@]@ 8@]"] []
+  fprintf {%fmt|@[<box 1>12@[<v 1> -5@ -6@ -7@]@ 8@]|} []
 
 type vec = { x:int; y:int}
 let ( +: ) x y = {x;y}
 
-let pp_vec {x;y} = fprintf [%fmt "{x:%d;y:%d}"] [x;y]
+let pp_vec {x;y} = fprintf {%fmt|{x:%d;y:%d}|} [x;y]
 
 let vec =
   fprintf
-    [%fmt "@{<v 2> %{ int _*} %a$0@ %a$0@ %a$0@ %a$0@}"]
+    {%fmt|@{<v 2> %{ int _*} %a$0@ %a$0@ %a$0@ %a$0@}|}
     [pp_vec; 1; 1 +: 2; 3 +: 4; 5 +: 6; 7 +: 8]
 
 let buffer () =
@@ -64,14 +59,13 @@ let explain got expected ppf =
     if len <> 0 then while  got.[!i] = expected.[!i] do incr i done;
     let sub s = String.sub s (max 0 (!i-10)) (min (!i + 10) (len- !i)) in
     fprintf
-      [%fmt "@{<v 0>all:@,%s@,got %d$3     :@,%s@,expected %d$3:@,%s@}"]
+      {%fmt|@{<v 0>all:@,%s@,got %d$3     :@,%s@,expected %d$3:@,%s@}|}
           [got; sub got; sub expected;!i] ppf
   else ppf
 
 let semicolumn =
   fprintf
-    [%fmt "@[<hov 0>@[<v 0>le@,la@,les@]@ \
-           @[<v 0>der@,die@,die@]@ @[<v 0>the@,the@,the@]@]"]
+    {%fmt|@[<hov 0>@[<v 0>le@,la@,les@]@ @[<v 0>der@,die@,die@]@ @[<v 0>the@,the@,the@]@]|}
     []
 
 let exec (name,x,expected) =
@@ -82,36 +76,38 @@ let exec (name,x,expected) =
   let bold = Ansi.bold in
   let u, fk, i, crossed = Ansi.(u,fk,i, crossed) in
   let status = if res = expected then
-      fprintf [%fmt "@{<crossed>@{<green>[OK]@}@}"] []
+      fprintf {%fmt|@{<crossed>@{<green>[OK]@}@}|} []
     else
-      fprintf [%fmt "@{<red>[FAILURE]@}"] [] in
-  fprintf 
-    [%fmt "@{<v 0> @{<fk>@{<u>Test@}@} @{<i>@{<bold>[%{string name}]@}@}:%t@,%t@}"]
+      fprintf {%fmt|@{<red>[FAILURE]@}|} [] in
+  fprintf
+    {%fmt|@{<v 0> @{<fk>@{<u>Test@}@} @{<i>@{<bold>[%{string name}]@}@}:%t@,%t@}|}
     [status; explain res expected] stdout |> ignore
 
 let full_break = fprintf
-    [%fmt "@{<hov 2>x@ @{<hov 2>y@\nz@}@ w@\nt@}"] []
+    {%fmt|@{<hov 2>x@ @{<hov 2>y@
+z@}@ w@
+t@}|} []
 
 let box_margin = fprintf
-    [%fmt "@{<hov 1>break here:@ @{<hov 0>new box@}@}"] []
+    {%fmt|@{<hov 1>break here:@ @{<hov 0>new box@}@}|} []
 (* the second hov box triggers the upstream break to avoid opening
    beyond the box margin *)
 
 let box_margin_2 = fprintf
-    [%fmt "@{<hov 1>reset break here:@{<hov 0>new box@}@}"] []
+    {%fmt|@{<hov 1>reset break here:@{<hov 0>new box@}@}|} []
 (* the second hov box is rejected to the left *)
 
 let rec nested: 'n. int -> int -> ('a,'n) Formatter.t -> ('a,'n) Formatter.t =
   fun indent n ppf ->
   if n = 0 then
-    fprintf [%fmt "@[<v indent>level 0@ [@ item@ item@ ]@]"] [] ppf
+    fprintf {%fmt|@[<v indent>level 0@ [@ item@ item@ ]@]|} [] ppf
   else
     fprintf
-      [%fmt "@[<v indent>level %d@,[@,%t$1@,%t$1@,]@]"]
+      {%fmt|@[<v indent>level %d@,[@,%t$1@,%t$1@,]@]|}
       [n; nested indent (n-1)]
       ppf
 
-let fmt = [%fmt "%s$4 %d %d"]
+let fmt = {%fmt|%s$4 %d %d|}
 let fmt2 = fmt
 
 let fmt3 = fprintf
@@ -119,37 +115,35 @@ let fmt3 = fprintf
 
 let break_all =
   fprintf
-    [%fmt "@[<hv 0>x@ y@ z@ w@\nt@]"] []
+    {%fmt|@[<hv 0>x@ y@ z@ w@
+t@]|} []
 
 let boxes_in_hv =
   fprintf
-    [%fmt "@[<hv 0>か@ ら@ ま@ や@ @[<hov 0>ひ@ き@ し@ み@]@ こ@ の@ も@]"]
+    {%fmt|@[<hv 0>か@ ら@ ま@ や@ @[<hov 0>ひ@ き@ し@ み@]@ こ@ の@ も@]|}
     []
 
 
 let hv_boxes_in_hv =
   fprintf
-    [%fmt "@[<hv 0>ꙮ@ 05@ @[<hv 0>08@ 11@ 14@ 17@ 20+@]@ в@ у@ щ@]"]
+    {%fmt|@[<hv 0>ꙮ@ 05@ @[<hv 0>08@ 11@ 14@ 17@ 20+@]@ в@ у@ щ@]|}
     []
 
 let v_boxes_in_hv =
   fprintf
-    [%fmt "@[<hv 2>@ 𒆍 @ ---@[<v 0>𒀭 @,𒊏 @]@ 𒆠 @ end@]"]
+    {%fmt|@[<hv 2>@ 𒆍 @ ---@[<v 0>𒀭 @,𒊏 @]@ 𒆠 @ end@]|}
     []
 
 
 let overfit_v_boxes_in_hv =
   fprintf
-    [%fmt "@[<hv 2>@ Arma@ @[<v 0>virumque@,cano@,Troiæ qui primus ab@]\
-           @ oris@]"]
+    {%fmt|@[<hv 2>@ Arma@ @[<v 0>virumque@,cano@,Troiæ qui primus ab@]@ oris@]|}
     []
 
 
 let v_in_hv_in_hv =
   fprintf
-    [%fmt "@[<hv 2>@ Arma@ @[<hv 0>virumque@ @[<v 0>cano@,\
-           Troiæ@]@ qui@ primus@ ab@]\
-           @ oris@]"]
+    {%fmt|@[<hv 2>@ Arma@ @[<hv 0>virumque@ @[<v 0>cano@,Troiæ@]@ qui@ primus@ ab@]@ oris@]|}
     []
 
 

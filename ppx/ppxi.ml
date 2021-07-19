@@ -1,6 +1,6 @@
 open Ppxlib
 
-let name = "freefmt-ppx"
+let name = "ffmt-ppx"
 
 
 let (@?) lex loc =
@@ -12,8 +12,12 @@ let stream lex loc s =
   let lexbuf = Lexing.from_string s @? loc in
   let loc loc_start loc_end=
     Location.{ loc_start; loc_end; loc_ghost = true } in
-  fun () -> lex lexbuf,
-            loc lexbuf.lex_start_p lexbuf.lex_curr_p
+  fun () ->
+    try
+      lex lexbuf,
+      loc lexbuf.lex_start_p lexbuf.lex_curr_p
+    with  _ ->
+      Format.eprintf "Error when lexing: %s@." s; assert false
 
 let stop loc = [%expr [] ]
 let mkcons loc x y = [%expr [%e x] :: [%e y] ]
@@ -23,7 +27,11 @@ let str loc x = Ast_builder.Default.estring ~loc x
 
 let subparser loc x =
   let lexbuf = Lexing.from_string x in
-  Parser.parse_expression Lexer.token (lexbuf @? loc)
+  try
+    Parser.parse_expression Lexer.token (lexbuf @? loc)
+  with _ ->
+      Format.eprintf "Error when lexing: %s@." x; assert false
+
 
 let implicit loc = function
   | "d" -> [%expr int]

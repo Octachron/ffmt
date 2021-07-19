@@ -2,13 +2,13 @@
 (tests
   (names interpolation)
   (modules Interpolation)
-  (preprocess (pps freefmt_ppxi))
-  (libraries freefmt)
+  (preprocess (pps ffmt_ppxi))
+  (libraries ffmt)
 )
 
 (tests
   (names meta)
   (modules Meta)
-  (preprocess (pps freefmt_ppx))
-  (libraries freefmt)
+  (preprocess (pps ffmt_ppx))
+  (libraries ffmt)
 )
